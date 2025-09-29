@@ -1,8 +1,27 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { randomUUID } from "node:crypto";
+import { ProfileService } from '../services/ProfileService.js';
+import { ProfileValidationError } from '../models/Profile.js';
+
+/**
+ * Profile Routes - Presentation Layer
+ *
+ * Responsibilities:
+ * - Handle HTTP requests and responses
+ * - Validate request format and parameters
+ * - Transform service responses to HTTP format
+ * - Set appropriate HTTP status codes
+ * - Handle errors gracefully
+ *
+ * This layer should NOT contain:
+ * - Business logic (delegated to ProfileService)
+ * - Database operations (delegated to ProfileRepository)
+ * - Data validation (basic format validation only)
+ */
 
 const router = Router();
+// Initialize service layer for business logic
+const profileService = new ProfileService();
 
 /**
  * @swagger
@@ -10,21 +29,6 @@ const router = Router();
  *   name: Profiles
  *   description: Profile management endpoints
  */
-
-export interface Profile {
-  id: string;
-  firstName: string;
-  lastName: string;
-  birthday: string;           // mm/dd
-  email: string;
-  phoneNumber: string;
-  profileImage?: string | null;
-  nickname?: string | null;
-  status?: string | null;
-}
-
-// In-memory “DB”
-const profiles: Profile[] = [];
 
 /**
  * @swagger
@@ -42,8 +46,24 @@ const profiles: Profile[] = [];
  *               items:
  *                 $ref: '#/components/schemas/Profile'
  */
-router.get("/", (_req: Request, res: Response) => {
-  res.json(profiles);
+/**
+ * GET /api/v1/profiles
+ * Retrieves all profiles from the system
+ */
+router.get("/", async (_req: Request, res: Response) => {
+  try {
+    // Delegate business logic to service layer
+    const profiles = await profileService.getAllProfiles();
+
+    // Return successful response with data
+    res.json(profiles);
+  } catch (error) {
+    // Log error for debugging (in production, use proper logging)
+    console.error('Error fetching profiles:', error);
+
+    // Return generic error to client
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
@@ -74,10 +94,33 @@ router.get("/", (_req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/:id", (req: Request, res: Response) => {
-  const p = profiles.find(pr => pr.id === req.params.id);
-  if (!p) return res.status(404).json({ error: "Profile not found" });
-  res.json(p);
+/**
+ * GET /api/v1/profiles/:id
+ * Retrieves a specific profile by ID
+ */
+router.get("/:id", async (req: Request, res: Response) => {
+  try {
+    // Extract ID from URL parameter
+    const profile = await profileService.getProfileById(req.params.id);
+
+    // Check if profile exists
+    if (!profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    // Return found profile
+    res.json(profile);
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+
+    // Handle validation errors (bad request format)
+    if (error instanceof ProfileValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    // Handle unexpected errors
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
@@ -142,43 +185,35 @@ router.get("/:id", (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/", (req: Request, res: Response) => {
-  const {
-    firstName,
-    lastName,
-    birthday,
-    email,
-    phoneNumber,
-    profileImage = null,
-    nickname = null,
-    status = null,
-  } = req.body ?? {};
+/**
+ * POST /api/v1/profiles
+ * Creates a new profile
+ */
+router.post("/", async (req: Request, res: Response) => {
+  try {
+    // Pass request body to service for validation and creation
+    const profile = await profileService.createProfile(req.body);
 
-  // Minimal validation for required fields
-  const missing = ["firstName","lastName","birthday","email","phoneNumber"]
-    .filter(k => !req.body?.[k]);
+    // Return created profile with 201 status
+    res.status(201).json(profile);
+  } catch (error) {
+    console.error('Error creating profile:', error);
 
-  if (missing.length) {
-    return res.status(400).json({
-      error: "Missing required fields",
-      missing,
-    });
+    // Handle business logic and validation errors
+    if (error instanceof ProfileValidationError) {
+      // Use 409 for conflict (email exists), 400 for validation errors
+      const statusCode = error.field === 'email' && error.message.includes('already exists') ? 409 : 400;
+
+      return res.status(statusCode).json({
+        error: error.message,
+        field: error.field,
+        missing: error.missingFields
+      });
+    }
+
+    // Handle unexpected errors
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const newProfile: Profile = {
-    id: randomUUID(),
-    firstName,
-    lastName,
-    birthday,
-    email,
-    phoneNumber,
-    profileImage,
-    nickname,
-    status,
-  };
-
-  profiles.push(newProfile);
-  return res.status(201).json(newProfile);
 });
 
 export default router;

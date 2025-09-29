@@ -98,6 +98,37 @@ export MONGODB_URI=mongodb://localhost:27017
 export DATABASE_NAME=parrit
 ```
 
+### MongoDB Compass (Visual Client)
+
+**MongoDB Compass** is the official GUI client for MongoDB that allows you to visually explore your database, collections, and documents.
+
+1. **Download MongoDB Compass**:
+   - Visit [https://www.mongodb.com/try/download/compass](https://www.mongodb.com/try/download/compass)
+   - Download and install for your operating system
+
+2. **Connect to your local MongoDB**:
+   - Open MongoDB Compass
+   - Use connection string: `mongodb://localhost:27017`
+   - Click "Connect"
+
+3. **Explore your Parrit database**:
+   - You'll see the `parrit` database after creating your first profile
+   - Browse the `profiles` collection to see your data
+   - View documents, indexes, and collection stats
+   - Run queries and aggregations visually
+
+4. **Useful features**:
+   - **Documents tab**: View and edit profile documents
+   - **Indexes tab**: See the email and createdAt indexes
+   - **Schema tab**: Analyze your data structure
+   - **Query bar**: Test MongoDB queries before using in code
+
+MongoDB Compass is especially helpful for:
+- Debugging data issues
+- Understanding your document structure
+- Testing queries and aggregations
+- Monitoring database performance
+
 ## Installation
 
 1. **Clone the repository**:

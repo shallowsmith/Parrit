@@ -1,15 +1,17 @@
-import { ProfileRepository } from '../repositories/ProfileRepository.js';
+import { ProfileRepository } from '../repositories/ProfileRepository';
 import {
   ProfileValidationError,
   validateCreateProfileRequest,
-  toProfileResponse
-} from '../models/Profile.js';
+  toProfileResponse,
+  updateProfileSchema
+} from '../models/Profile';
 import type {
   Profile,
   CreateProfileRequest,
   UpdateProfileRequest,
   ProfileResponse
-} from '../models/Profile.js';
+} from '../models/Profile';
+import { z } from 'zod';
 
 /**
  * Service class for Profile business logic.
@@ -116,65 +118,27 @@ export class ProfileService {
       return null;
     }
 
-    // Validate each field individually (partial update)
-    const validatedData: UpdateProfileRequest = {};
-
-    // Validate firstName if provided
-    if (updateData.firstName !== undefined) {
-      if (typeof updateData.firstName !== 'string' || !updateData.firstName.trim()) {
-        throw new ProfileValidationError('Invalid first name', 'firstName');
+    // Validate update data using Zod schema
+    let validatedData: UpdateProfileRequest;
+    try {
+      validatedData = updateProfileSchema.parse(updateData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const message = error.issues[0]?.message || 'Validation failed';
+        throw new ProfileValidationError(
+          message,
+          error.issues[0]?.path[0]?.toString()
+        );
       }
-      validatedData.firstName = updateData.firstName.trim();
+      throw error;
     }
 
-    if (updateData.lastName !== undefined) {
-      if (typeof updateData.lastName !== 'string' || !updateData.lastName.trim()) {
-        throw new ProfileValidationError('Invalid last name', 'lastName');
-      }
-      validatedData.lastName = updateData.lastName.trim();
-    }
-
-    // Validate and check email uniqueness if provided
-    if (updateData.email !== undefined) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(updateData.email)) {
-        throw new ProfileValidationError('Invalid email format', 'email');
-      }
-
-      // Business rule: Email must be unique (excluding current profile)
-      const emailExists = await this.profileRepository.checkEmailExists(updateData.email, id);
+    // Business rule: Email must be unique (excluding current profile)
+    if (validatedData.email !== undefined) {
+      const emailExists = await this.profileRepository.checkEmailExists(validatedData.email, id);
       if (emailExists) {
         throw new ProfileValidationError('Email already exists', 'email');
       }
-
-      validatedData.email = updateData.email.toLowerCase().trim();
-    }
-
-    if (updateData.birthday !== undefined) {
-      const birthdayRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/;
-      if (!birthdayRegex.test(updateData.birthday)) {
-        throw new ProfileValidationError('Invalid birthday format. Use MM/DD', 'birthday');
-      }
-      validatedData.birthday = updateData.birthday.trim();
-    }
-
-    if (updateData.phoneNumber !== undefined) {
-      if (typeof updateData.phoneNumber !== 'string' || !updateData.phoneNumber.trim()) {
-        throw new ProfileValidationError('Invalid phone number', 'phoneNumber');
-      }
-      validatedData.phoneNumber = updateData.phoneNumber.trim();
-    }
-
-    if (updateData.profileImage !== undefined) {
-      validatedData.profileImage = updateData.profileImage;
-    }
-
-    if (updateData.nickname !== undefined) {
-      validatedData.nickname = updateData.nickname;
-    }
-
-    if (updateData.status !== undefined) {
-      validatedData.status = updateData.status;
     }
 
     // Update profile in database

@@ -2,9 +2,8 @@
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     "target": "ES2020",
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "verbatimModuleSyntax": true,   // ok to keep on with NodeNext
+      "module": "ESNext",
+      "moduleResolution": "Bundler",
       "esModuleInterop": true,
       "strict": true,
       "outDir": "dist"

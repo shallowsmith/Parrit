@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { ProfileService } from '../services/ProfileService.js';
-import { ProfileValidationError } from '../models/Profile.js';
+import { ProfileService } from '../services/ProfileService';
+import { ProfileValidationError } from '../models/Profile';
 
 /**
  * Profile Routes - Presentation Layer
@@ -23,12 +23,6 @@ const router = Router();
 // Initialize service layer for business logic
 const profileService = new ProfileService();
 
-/**
- * @swagger
- * tags:
- *   name: Profiles
- *   description: Profile management endpoints
- */
 
 /**
  * @swagger
@@ -208,6 +202,116 @@ router.post("/", async (req: Request, res: Response) => {
         error: error.message,
         field: error.field,
         missing: error.missingFields
+      });
+    }
+
+    // Handle unexpected errors
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/v1/profiles/{id}:
+ *   put:
+ *     summary: Update a profile
+ *     tags: [Profiles]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Profile ID (MongoDB ObjectId)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               firstName:
+ *                 type: string
+ *                 example: "John"
+ *               lastName:
+ *                 type: string
+ *                 example: "Doe"
+ *               birthday:
+ *                 type: string
+ *                 pattern: "^[0-9]{2}/[0-9]{2}$"
+ *                 example: "01/15"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "john.doe@example.com"
+ *               phoneNumber:
+ *                 type: string
+ *                 example: "+1234567890"
+ *               profileImage:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "https://example.com/image.jpg"
+ *               nickname:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "Johnny"
+ *               status:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "Active"
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Profile'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Profile not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Email already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+/**
+ * PUT /api/v1/profiles/:id
+ * Updates an existing profile
+ */
+router.put("/:id", async (req: Request, res: Response) => {
+  try {
+    // Pass ID and request body to service for validation and update
+    const profile = await profileService.updateProfile(req.params.id, req.body);
+
+    // Check if profile exists
+    if (!profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    // Return updated profile
+    res.json(profile);
+  } catch (error) {
+    console.error('Error updating profile:', error);
+
+    // Handle business logic and validation errors
+    if (error instanceof ProfileValidationError) {
+      // Use 409 for conflict (email exists), 400 for validation errors
+      const statusCode = error.field === 'email' && error.message.includes('already exists') ? 409 : 400;
+
+      return res.status(statusCode).json({
+        error: error.message,
+        field: error.field
       });
     }
 

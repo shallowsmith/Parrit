@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import { z } from 'zod';
 
 /**
  * Core Profile interface representing the database schema.
@@ -19,37 +20,44 @@ export interface Profile {
   updatedAt?: Date;
 }
 
-/**
- * Request payload for creating a new profile.
- * Contains all required and optional fields needed for profile creation.
- * Used for type safety and validation at the API boundary.
- */
-export interface CreateProfileRequest {
-  firstName: string;
-  lastName: string;
-  birthday: string;
-  email: string;
-  phoneNumber: string;
-  profileImage?: string | null;
-  nickname?: string | null;
-  status?: string | null;
-}
+// Zod schema for creating a profile
+export const createProfileSchema = z.object({
+  firstName: z.string().trim().min(1, 'First name is required'),
+  lastName: z.string().trim().min(1, 'Last name is required'),
+  birthday: z.string()
+    .trim()
+    .regex(/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/, 'Invalid birthday format. Use MM/DD'),
+  email: z.string()
+    .trim()
+    .toLowerCase()
+    .email('Invalid email format'),
+  phoneNumber: z.string().trim().min(1, 'Phone number is required'),
+  profileImage: z.string().nullable().optional(),
+  nickname: z.string().nullable().optional(),
+  status: z.string().nullable().optional()
+});
 
-/**
- * Request payload for updating an existing profile.
- * All fields are optional since partial updates are supported.
- * Only provided fields will be updated in the database.
- */
-export interface UpdateProfileRequest {
-  firstName?: string;
-  lastName?: string;
-  birthday?: string;
-  email?: string;
-  phoneNumber?: string;
-  profileImage?: string | null;
-  nickname?: string | null;
-  status?: string | null;
-}
+// Zod schema for updating a profile
+export const updateProfileSchema = z.object({
+  firstName: z.string().trim().min(1, 'First name cannot be empty').optional(),
+  lastName: z.string().trim().min(1, 'Last name cannot be empty').optional(),
+  birthday: z.string()
+    .trim()
+    .regex(/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/, 'Invalid birthday format. Use MM/DD')
+    .optional(),
+  email: z.string()
+    .trim()
+    .toLowerCase()
+    .email('Invalid email format')
+    .optional(),
+  phoneNumber: z.string().trim().min(1, 'Phone number cannot be empty').optional(),
+  profileImage: z.string().nullable().optional(),
+  nickname: z.string().nullable().optional(),
+  status: z.string().nullable().optional()
+});
+
+export type CreateProfileRequest = z.infer<typeof createProfileSchema>;
+export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
 
 /**
  * Response format for profile data sent to clients.
@@ -95,42 +103,22 @@ export class ProfileValidationError extends Error {
  * @throws {ProfileValidationError} If validation fails
  */
 export function validateCreateProfileRequest(data: any): CreateProfileRequest {
-  // Check for missing required fields
-  const requiredFields = ['firstName', 'lastName', 'birthday', 'email', 'phoneNumber'];
-  const missingFields = requiredFields.filter(field => !data[field]);
-
-  if (missingFields.length > 0) {
-    throw new ProfileValidationError(
-      'Missing required fields',
-      undefined,
-      missingFields
-    );
+  try {
+    return createProfileSchema.parse(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const missingFields = error.issues
+        .filter((err: any) => err.message.includes('required'))
+        .map((err: any) => err.path.join('.'));
+      const message = error.issues[0]?.message || 'Validation failed';
+      throw new ProfileValidationError(
+        message,
+        error.issues[0]?.path[0]?.toString(),
+        missingFields.length > 0 ? missingFields : undefined
+      );
+    }
+    throw error;
   }
-
-  // Validate email format using basic regex pattern
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(data.email)) {
-    throw new ProfileValidationError('Invalid email format', 'email');
-  }
-
-  // Validate birthday format (MM/DD)
-  // Ensures month is 01-12 and day is 01-31
-  const birthdayRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/;
-  if (!birthdayRegex.test(data.birthday)) {
-    throw new ProfileValidationError('Invalid birthday format. Use MM/DD', 'birthday');
-  }
-
-  // Return sanitized data with trimmed strings and normalized email
-  return {
-    firstName: data.firstName.trim(),
-    lastName: data.lastName.trim(),
-    birthday: data.birthday.trim(),
-    email: data.email.toLowerCase().trim(), // Normalize email to lowercase
-    phoneNumber: data.phoneNumber.trim(),
-    profileImage: data.profileImage || null,
-    nickname: data.nickname || null,
-    status: data.status || null,
-  };
 }
 
 /**

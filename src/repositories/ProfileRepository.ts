@@ -1,7 +1,7 @@
 import { Collection, Db, ObjectId } from 'mongodb';
 import type { InsertOneResult, UpdateResult, DeleteResult } from 'mongodb';
-import type { Profile, CreateProfileRequest, UpdateProfileRequest } from '../models/Profile.js';
-import DatabaseConnection from '../config/database.js';
+import type { Profile, CreateProfileRequest, UpdateProfileRequest } from '../models/Profile';
+import DatabaseConnection from '../config/database';
 
 /**
  * Repository class for Profile data access.

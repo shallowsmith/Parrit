@@ -12,14 +12,14 @@
 
 import express from "express";
 import swaggerUi from "swagger-ui-express";
-import swaggerSpec from "./config/swagger.js";
-import DatabaseConnection from "./config/database.js";
-import { ProfileService } from "./services/ProfileService.js";
-import profileRoutes from "./routes/profile.routes.js";
-import budgetRoutes from "./routes/budget.routes.js";
-import categoryRoutes from "./routes/category.routes.js";
-import transactionRoutes from "./routes/transaction.routes.js";
-import receiptRoutes from "./routes/receipt.routes.js";
+import swaggerSpec from "./config/swagger";
+import DatabaseConnection from "./config/database";
+import { ProfileService } from "./services/ProfileService";
+import profileRoutes from "./routes/profile.routes";
+import budgetRoutes from "./routes/budget.routes";
+import categoryRoutes from "./routes/category.routes";
+import transactionRoutes from "./routes/transaction.routes";
+import receiptRoutes from "./routes/receipt.routes";
 
 // Create Express application instance
 const app = express();
@@ -37,7 +37,7 @@ app.use("/api/v1/profiles", profileRoutes);
 
 // Other routes (currently using in-memory storage)
 app.use("/api/v1/users/:id/budgets", budgetRoutes);
-app.use("/api/v1/users/{userId}/categories", categoryRoutes);
+app.use("/api/v1/users/:userId/categories", categoryRoutes);
 app.use("/api/v1/users/:userId/transactions", transactionRoutes);
 app.use("/api/v1/users/:userId/receipts", receiptRoutes);
 

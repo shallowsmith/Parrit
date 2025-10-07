@@ -10,7 +10,7 @@ This application follows a **Three-Layer Architecture** pattern for better separ
 
 1. **Presentation Layer (Routes)** - `src/routes/`
    - Handles HTTP requests and responses
-   - Input validation and sanitization
+   - Input validation using **Zod** schemas
    - HTTP status codes and error formatting
    - Swagger documentation
    - **No business logic or database operations**
@@ -37,6 +37,33 @@ This application follows a **Three-Layer Architecture** pattern for better separ
 - **Scalability**: Easy to add caching, switch databases, or modify business rules
 - **Code Reusability**: Services can be used by different routes or other services
 - **Clean Code**: Promotes SOLID principles and clean code practices
+
+### 🛡️ Schema Validation with Zod
+
+The application uses **[Zod](https://zod.dev/)** for runtime type validation and schema definition:
+
+- **Type Safety**: Automatically infer TypeScript types from Zod schemas
+- **Runtime Validation**: Validate incoming request data at runtime
+- **Clear Error Messages**: Provide detailed validation error messages to clients
+- **Schema Reusability**: Define schemas once, use for validation and type inference
+- **API Documentation**: Zod schemas integrate with Swagger/OpenAPI generation
+
+**Example Usage**:
+```typescript
+// Define schema in model
+export const CategorySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  userId: z.string()
+});
+
+// Validate in route
+const result = CategorySchema.safeParse(req.body);
+if (!result.success) {
+  return res.status(400).json({ error: result.error });
+}
+```
 
 ## Prerequisites
 
@@ -238,18 +265,38 @@ Required fields for creating a budget:
 - remaining
 
 ### Categories
-- `GET /users/:userId/categories` - Get categories for a user
+- `GET /users/:userId/categories` - Get all categories for a user
+- `GET /users/:userId/categories/:categoryId` - Get specific category by ID
+- `POST /users/:userId/categories` - Create new category for a user
+- `PUT /users/:userId/categories/:categoryId` - Update an existing category
+- `DELETE /users/:userId/categories/:categoryId` - Delete a category
 
-Category fields:
+Required fields for creating a category:
+- name
+- type
+
+Category fields (validated with Zod):
 - id
 - name
 - type
 - userId
 
 ### Transactions
-- `GET /users/:userId/transactions` - Get transactions for a user
+- `GET /users/:userId/transactions` - Get all transactions for a user
+- `GET /users/:userId/transactions/:transactionId` - Get specific transaction by ID
+- `POST /users/:userId/transactions` - Create new transaction for a user
+- `PUT /users/:userId/transactions/:transactionId` - Update an existing transaction
+- `DELETE /users/:userId/transactions/:transactionId` - Delete a transaction
 
-Transaction fields:
+Required fields for creating a transaction:
+- vendorName
+- description
+- dateTime
+- amount
+- paymentType
+- categoryName
+
+Transaction fields (validated with Zod):
 - id
 - userId
 - vendorName
@@ -261,9 +308,22 @@ Transaction fields:
 - receiptImageUrl (optional)
 
 ### Receipts
-- `GET /users/:userId/receipts` - Get receipts for a user
+- `GET /users/:userId/receipts` - Get all receipts for a user
+- `GET /users/:userId/receipts/:receiptId` - Get specific receipt by ID
+- `POST /users/:userId/receipts` - Create new receipt for a user
+- `PUT /users/:userId/receipts/:receiptId` - Update an existing receipt
+- `DELETE /users/:userId/receipts/:receiptId` - Delete a receipt
 
-Receipt fields:
+Required fields for creating a receipt:
+- vendorName
+- description
+- dateTime
+- amount
+- paymentType
+- categoryName
+- receiptImageUrl
+
+Receipt fields (validated with Zod):
 - id
 - userId
 - vendorName
@@ -279,21 +339,33 @@ Receipt fields:
 ```
 src/
 ├── config/
-│   ├── database.ts      # MongoDB connection singleton
-│   └── swagger.ts       # Swagger/OpenAPI configuration
+│   ├── database.ts           # MongoDB connection singleton
+│   └── swagger.ts            # Swagger/OpenAPI configuration
 ├── models/
-│   └── Profile.ts       # TypeScript interfaces and validation
+│   ├── Profile.ts            # Profile model with Zod schema
+│   ├── Budget.ts             # Budget model with Zod schema
+│   ├── Category.ts           # Category model with Zod schema
+│   ├── Transaction.ts        # Transaction model with Zod schema
+│   └── Receipt.ts            # Receipt model with Zod schema
 ├── repositories/
-│   └── ProfileRepository.ts  # Data access layer for profiles
+│   ├── ProfileRepository.ts  # Data access layer for profiles
+│   ├── BudgetRepository.ts   # Data access layer for budgets
+│   ├── CategoryRepository.ts # Data access layer for categories
+│   ├── TransactionRepository.ts # Data access layer for transactions
+│   └── ReceiptRepository.ts  # Data access layer for receipts
 ├── services/
-│   └── ProfileService.ts     # Business logic for profiles
+│   ├── ProfileService.ts     # Business logic for profiles
+│   ├── BudgetService.ts      # Business logic for budgets
+│   ├── CategoryService.ts    # Business logic for categories
+│   ├── TransactionService.ts # Business logic for transactions
+│   └── ReceiptService.ts     # Business logic for receipts
 ├── routes/
 │   ├── profile.routes.ts     # Profile REST endpoints
-│   ├── budget.routes.ts      # Budget endpoints (in-memory)
-│   ├── categories.routes.ts  # Category endpoints (in-memory)
-│   ├── transaction.routes.ts # Transaction endpoints (in-memory)
-│   └── receipt.routes.ts     # Receipt endpoints (in-memory)
-└── index.ts             # Application entry point
+│   ├── budget.routes.ts      # Budget REST endpoints
+│   ├── categories.routes.ts  # Category REST endpoints (with Zod validation)
+│   ├── transaction.routes.ts # Transaction REST endpoints
+│   └── receipt.routes.ts     # Receipt REST endpoints
+└── index.ts                  # Application entry point
 ```
 
 ### Key Design Patterns
@@ -303,21 +375,29 @@ src/
 - **Service Layer Pattern**: Business logic encapsulation
 - **Dependency Injection**: Services injected into routes
 - **Lazy Initialization**: Database collections initialized on first use
+- **Schema Validation**: Zod schemas for runtime type validation and TypeScript type inference
 
 ## Development Guidelines
 
 1. **Adding New Features**:
-   - Create model interfaces in `src/models/`
+   - Create Zod schema and TypeScript types in `src/models/`
    - Implement repository in `src/repositories/`
    - Add business logic in `src/services/`
-   - Create REST endpoints in `src/routes/`
+   - Create REST endpoints with Zod validation in `src/routes/`
 
-2. **Database Operations**:
+2. **Schema Validation**:
+   - Define Zod schemas in model files
+   - Use `.safeParse()` for validation in routes
+   - Infer TypeScript types from Zod schemas with `z.infer<>`
+   - Return clear validation error messages to clients
+
+3. **Database Operations**:
    - All database operations go through repositories
    - Use services for business logic and validation
    - Routes should only handle HTTP concerns
 
-3. **Error Handling**:
+4. **Error Handling**:
    - Repositories throw database-specific errors
    - Services throw business logic errors
    - Routes format errors for HTTP responses
+   - Zod validation errors return 400 status with detailed error messages

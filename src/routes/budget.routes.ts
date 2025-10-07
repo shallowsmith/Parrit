@@ -1,27 +1,11 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { randomUUID } from "node:crypto";
+import { BudgetService } from '../services/BudgetService';
+import { BudgetValidationError } from '../models/Budget';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
-/**
- * @swagger
- * tags:
- *   name: Budgets
- *   description: Budget management endpoints for users
- */
-
-export interface Budget {
-    id: string,
-    userId: string,
-    month: string,
-    year: string,
-    amount: number,
-    remaining: number
-}
-
-// In-memory “DB”
-const budgets: Budget[] = [];
+const budgetService = new BudgetService();
 
 /**
  * @swagger
@@ -35,8 +19,7 @@ const budgets: Budget[] = [];
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID
+ *         description: User ID (MongoDB ObjectId)
  *     responses:
  *       200:
  *         description: List of user's budgets
@@ -47,15 +30,35 @@ const budgets: Budget[] = [];
  *               items:
  *                 $ref: '#/components/schemas/Budget'
  */
-router.get("/", (_req: Request, res: Response) => {
-  res.json(budgets);
+router.get("/", async (req: Request, res: Response) => {
+  try {
+    // Get userId from path parameter
+    const userId = req.params.id;
+
+    // Delegate business logic to service layer
+    const budgets = await budgetService.getBudgetsByUserId(userId);
+
+    // Return successful response with data
+    res.json(budgets);
+  } catch (error) {
+    // Log error for debugging (in production, use proper logging)
+    console.error('Error fetching budgets:', error);
+
+    // Handle validation errors (bad request format)
+    if (error instanceof BudgetValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    // Return generic error to client
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
  * @swagger
- * /api/v1/users/{userId}/budgets/{budgetId}:
+ * /api/v1/users/{userId}/budgets/{id}:
  *   get:
- *     summary: Get a specific budget by ID
+ *     summary: Get a budget by ID
  *     tags: [Budgets]
  *     parameters:
  *       - in: path
@@ -63,15 +66,13 @@ router.get("/", (_req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID
+ *         description: User ID (MongoDB ObjectId)
  *       - in: path
- *         name: budgetId
+ *         name: id
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: Budget ID
+ *         description: Budget ID (MongoDB ObjectId)
  *     responses:
  *       200:
  *         description: Budget found
@@ -86,17 +87,36 @@ router.get("/", (_req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/:id", (req: Request, res: Response) => {
-  const budget = budgets.find(b => b.id === req.params.id);
-  if (!budget) return res.status(404).json({ error: "Budget not found" });
-  res.json(budget);
+router.get("/:id", async (req: Request, res: Response) => {
+  try {
+    // Extract ID from URL parameter
+    const budget = await budgetService.getBudgetById(req.params.id);
+
+    // Check if budget exists
+    if (!budget) {
+      return res.status(404).json({ error: "Budget not found" });
+    }
+
+    // Return found budget
+    res.json(budget);
+  } catch (error) {
+    console.error('Error fetching budget:', error);
+
+    // Handle validation errors (bad request format)
+    if (error instanceof BudgetValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    // Handle unexpected errors
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
  * @swagger
  * /api/v1/users/{userId}/budgets:
  *   post:
- *     summary: Create a new budget for a user
+ *     summary: Create a new budget
  *     tags: [Budgets]
  *     parameters:
  *       - in: path
@@ -104,8 +124,7 @@ router.get("/:id", (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID
+ *         description: User ID (MongoDB ObjectId)
  *     requestBody:
  *       required: true
  *       content:
@@ -113,23 +132,32 @@ router.get("/:id", (req: Request, res: Response) => {
  *           schema:
  *             type: object
  *             required:
+ *               - userId
  *               - month
  *               - year
  *               - amount
  *               - remaining
  *             properties:
+ *               userId:
+ *                 type: string
+ *                 example: "68df4cd8f4c53b419fc5f196"
  *               month:
  *                 type: string
  *                 example: "January"
  *               year:
- *                 type: string
- *                 example: "2024"
+ *                 type: number
+ *                 example: 2025
  *               amount:
  *                 type: number
+ *                 format: double
  *                 example: 1000.00
  *               remaining:
  *                 type: number
+ *                 format: double
  *                 example: 1000.00
+ *               categoryId:
+ *                 type: string
+ *                 example: "507f1f77bcf86cd799439012"
  *     responses:
  *       201:
  *         description: Budget created successfully
@@ -143,33 +171,129 @@ router.get("/:id", (req: Request, res: Response) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Budget already exists for this period
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.post("/", (req: Request, res: Response) => {
-  const { month, year, amount, remaining } = req.body ?? {};
-  const userId = req.params.id;
+router.post("/", async (req: Request, res: Response) => {
+  try {
+    // Pass request body to service for validation and creation
+    const budget = await budgetService.createBudget(req.body);
 
-  const missing = ["month", "year", "amount", "remaining"]
-    .filter(k => !req.body?.[k]);
+    // Return created budget with 201 status
+    res.status(201).json(budget);
+  } catch (error) {
+    console.error('Error creating budget:', error);
 
-  if (missing.length) {
-    return res.status(400).json({
-      error: "Missing required fields",
-      missing,
-    });
+    // Handle business logic and validation errors
+    if (error instanceof BudgetValidationError) {
+      // Use 409 for conflict (budget exists), 400 for validation errors
+      const statusCode = error.message.includes('already exists') ? 409 : 400;
+
+      return res.status(statusCode).json({
+        error: error.message,
+        field: error.field,
+        missing: error.missingFields
+      });
+    }
+
+    // Handle unexpected errors
+    res.status(500).json({ error: 'Internal server error' });
   }
+});
 
-  const newBudget: Budget = {
-    id: randomUUID(),
-    userId,
-    month,
-    year,
-    amount,
-    remaining,
-  };
+/**
+ * @swagger
+ * /api/v1/users/{userId}/budgets/{id}:
+ *   put:
+ *     summary: Update a budget
+ *     tags: [Budgets]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID (MongoDB ObjectId)
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Budget ID (MongoDB ObjectId)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               month:
+ *                 type: string
+ *                 example: "January"
+ *               year:
+ *                 type: number
+ *                 example: 2025
+ *               amount:
+ *                 type: number
+ *                 format: double
+ *                 example: 1000.00
+ *               remaining:
+ *                 type: number
+ *                 format: double
+ *                 example: 750.00
+ *               categoryId:
+ *                 type: string
+ *                 example: "507f1f77bcf86cd799439012"
+ *     responses:
+ *       200:
+ *         description: Budget updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Budget'
+ *       400:
+ *         description: Validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Budget not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.put("/:id", async (req: Request, res: Response) => {
+  try {
+    // Pass ID and request body to service for validation and update
+    const budget = await budgetService.updateBudget(req.params.id, req.body);
 
-  budgets.push(newBudget);
-  return res.status(201).json(newBudget);
+    // Check if budget exists
+    if (!budget) {
+      return res.status(404).json({ error: "Budget not found" });
+    }
+
+    // Return updated budget
+    res.json(budget);
+  } catch (error) {
+    console.error('Error updating budget:', error);
+
+    // Handle business logic and validation errors
+    if (error instanceof BudgetValidationError) {
+      return res.status(400).json({
+        error: error.message,
+        field: error.field
+      });
+    }
+
+    // Handle unexpected errors
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;
-

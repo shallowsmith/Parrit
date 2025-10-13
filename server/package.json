@@ -12,6 +12,7 @@
     "@types/mongodb": "^4.0.6",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
+    "dotenv": "^17.2.3",
     "express": "^4.19.2",
     "mongodb": "^6.20.0",
     "swagger-jsdoc": "^6.2.8",

@@ -19,16 +19,29 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
-// Firebase client configuration (from your Firebase console)
+// Firebase client configuration (loaded from environment variables)
 const firebaseConfig = {
-  apiKey: "AIzaSyCw-vzSeGGn0Xb76Ag_tz1lHmMVEp5zLRs",
-  authDomain: "parrit-fc705.firebaseapp.com",
-  projectId: "parrit-fc705",
-  storageBucket: "parrit-fc705.firebasestorage.app",
-  messagingSenderId: "837818695525",
-  appId: "1:837818695525:web:7f4a9d0d6839334a346b8c",
-  measurementId: "G-Z9ND7P9V0Y"
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID,
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID
 };
+
+// Validate Firebase configuration
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error('\n❌ Error: Firebase configuration not found in environment variables\n');
+  console.error('Please check that your .env file has:');
+  console.error('  - FIREBASE_API_KEY');
+  console.error('  - FIREBASE_AUTH_DOMAIN');
+  console.error('  - FIREBASE_PROJECT_ID');
+  console.error('  - FIREBASE_STORAGE_BUCKET');
+  console.error('  - FIREBASE_MESSAGING_SENDER_ID');
+  console.error('  - FIREBASE_APP_ID\n');
+  process.exit(1);
+}
 
 /**
  * Formats a timestamp into a readable date string

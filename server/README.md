@@ -334,6 +334,306 @@ Receipt fields (validated with Zod):
 - categoryName
 - receiptImageUrl
 
+### Spending History
+- `GET /users/:userId/spending/summary` - Get aggregated spending summary by category
+- `GET /users/:userId/spending/detailed` - Get detailed spending report with all transactions grouped by category
+- `GET /users/:userId/spending/monthly-trends` - Get monthly spending trends with percentage comparison
+
+**Summary Endpoint** - Returns aggregated spending totals per category with percentages for visualization (e.g., pie charts, donut charts):
+
+Query Parameters:
+- `period` (required): Time period for analysis
+  - `current_month` - From first day of current month to now
+  - `past_week` - Last 7 days from now
+  - `past_30_days` - Last 30 days from now
+  - `custom` - Custom date range (requires startDate and endDate)
+- `startDate` (required if period=custom): ISO 8601 datetime string (e.g., "2025-10-01T00:00:00Z")
+- `endDate` (required if period=custom): ISO 8601 datetime string (e.g., "2025-10-29T23:59:59Z")
+
+Response includes:
+- `userId` - User ID
+- `period` - Period label (e.g., "Current Month", "Past Week")
+- `startDate` - Actual start date used for the query
+- `endDate` - Actual end date used for the query
+- `totalSpending` - Total amount spent across all categories
+- `categories` - Array of category summaries:
+  - `categoryId` - Category ID
+  - `categoryName` - Category name
+  - `categoryType` - Category type (e.g., "expense", "income")
+  - `totalAmount` - Total spending in this category
+  - `transactionCount` - Number of transactions in this category
+  - `percentage` - Percentage of total spending (rounded to 2 decimals)
+
+**Detailed Endpoint** - Returns all transactions grouped by category for export or detailed analysis:
+
+Query Parameters: Same as summary endpoint (period, startDate, endDate)
+
+Response includes:
+- Same top-level fields as summary endpoint (userId, period, startDate, endDate, totalSpending)
+- `categories` - Array of category details with transactions:
+  - `categoryId`, `categoryName`, `categoryType` - Category information
+  - `totalAmount` - Total spending in this category
+  - `transactionCount` - Number of transactions in this category
+  - `transactions` - Array of transaction details:
+    - `id` - Transaction ID
+    - `vendorName` - Merchant name
+    - `description` - Transaction description
+    - `dateTime` - Transaction date and time
+    - `amount` - Transaction amount
+    - `paymentType` - Payment method used
+    - `receiptId` - Optional receipt reference
+
+**Monthly Trends Endpoint** - Returns current month spending with historical monthly breakdown and percentage change comparison:
+
+Query Parameters:
+- `monthCount` (optional, default: 6): Number of previous months to analyze (min: 1, max: 24)
+- `includeCurrentMonth` (optional, default: true): Whether to include current month in response
+
+Response includes:
+- `userId` - User ID
+- `currentMonth` - Current month summary:
+  - `month` - Month label (e.g., "October 2025")
+  - `totalAmount` - Total spending this month
+  - `transactionCount` - Number of transactions this month
+  - `startDate` - Start of current month
+  - `endDate` - End date (now if incomplete month)
+- `trend` - Comparison data:
+  - `percentageChange` - Percentage change vs average of previous months (e.g., 12 for +12%)
+  - `direction` - "increase", "decrease", or "stable"
+  - `comparisonPeriod` - Description (e.g., "last 6 months")
+  - `previousMonthsAverage` - Average spending of previous months
+- `monthlyBreakdown` - Array of previous months data (oldest to newest):
+  - `month` - Month label
+  - `year` - Year number
+  - `monthNumber` - Month number (1-12)
+  - `totalAmount` - Total spending for that month
+  - `transactionCount` - Number of transactions
+  - `startDate` - First day of month
+  - `endDate` - Last day of month
+
+**Use Cases**:
+- **Summary endpoint**: Display pie charts, donut charts, or category breakdowns showing spending distribution
+- **Detailed endpoint**: Export spending reports, show detailed transaction lists grouped by category, generate CSV/PDF reports
+- **Monthly trends endpoint**: Display line charts showing spending over time, show percentage trend indicators, compare current vs historical spending
+
+### Spending History API Examples
+
+**Example 1: Get current month spending summary**
+```bash
+curl -X GET "http://localhost:3000/api/v1/users/67211f56abc123def4567890/spending/summary?period=current_month" \
+  -H "Authorization: Bearer <your-jwt-token>"
+```
+
+Response:
+```json
+{
+  "userId": "67211f56abc123def4567890",
+  "period": "Current Month",
+  "startDate": "2025-10-01T00:00:00.000Z",
+  "endDate": "2025-10-29T23:59:59.999Z",
+  "totalSpending": 856.42,
+  "categories": [
+    {
+      "categoryId": "507f1f77bcf86cd799439012",
+      "categoryName": "Food",
+      "categoryType": "expense",
+      "totalAmount": 129.97,
+      "transactionCount": 8,
+      "percentage": 15.18
+    },
+    {
+      "categoryId": "507f1f77bcf86cd799439013",
+      "categoryName": "Transportation",
+      "categoryType": "expense",
+      "totalAmount": 245.50,
+      "transactionCount": 12,
+      "percentage": 28.67
+    }
+  ]
+}
+```
+
+**Example 2: Get past week spending summary**
+```bash
+curl -X GET "http://localhost:3000/api/v1/users/67211f56abc123def4567890/spending/summary?period=past_week" \
+  -H "Authorization: Bearer <your-jwt-token>"
+```
+
+**Example 3: Get detailed report for custom date range**
+```bash
+curl -X GET "http://localhost:3000/api/v1/users/67211f56abc123def4567890/spending/detailed?period=custom&startDate=2025-09-01T00:00:00Z&endDate=2025-09-30T23:59:59Z" \
+  -H "Authorization: Bearer <your-jwt-token>"
+```
+
+Response:
+```json
+{
+  "userId": "67211f56abc123def4567890",
+  "period": "Custom Range",
+  "startDate": "2025-09-01T00:00:00.000Z",
+  "endDate": "2025-09-30T23:59:59.999Z",
+  "totalSpending": 1245.67,
+  "categories": [
+    {
+      "categoryId": "507f1f77bcf86cd799439012",
+      "categoryName": "Food",
+      "categoryType": "expense",
+      "totalAmount": 385.20,
+      "transactionCount": 15,
+      "transactions": [
+        {
+          "id": "507f1f77bcf86cd799439020",
+          "vendorName": "Starbucks",
+          "description": "Morning coffee",
+          "dateTime": "2025-09-05T08:30:00.000Z",
+          "amount": 5.99,
+          "paymentType": "Credit Card",
+          "receiptId": "507f1f77bcf86cd799439025"
+        },
+        {
+          "id": "507f1f77bcf86cd799439021",
+          "vendorName": "Chipotle",
+          "description": "Lunch",
+          "dateTime": "2025-09-05T12:15:00.000Z",
+          "amount": 12.50,
+          "paymentType": "Debit Card"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Example 4: Get monthly spending trends (default 6 months)**
+```bash
+curl -X GET "http://localhost:3000/api/v1/users/67211f56abc123def4567890/spending/monthly-trends" \
+  -H "Authorization: Bearer <your-jwt-token>"
+```
+
+Response:
+```json
+{
+  "userId": "67211f56abc123def4567890",
+  "currentMonth": {
+    "month": "October 2025",
+    "totalAmount": 2345,
+    "transactionCount": 45,
+    "startDate": "2025-10-01T00:00:00.000Z",
+    "endDate": "2025-10-29T23:59:59.999Z"
+  },
+  "trend": {
+    "percentageChange": 12,
+    "direction": "increase",
+    "comparisonPeriod": "last 6 months",
+    "previousMonthsAverage": 2094.64
+  },
+  "monthlyBreakdown": [
+    {
+      "month": "April 2025",
+      "year": 2025,
+      "monthNumber": 4,
+      "totalAmount": 2300,
+      "transactionCount": 55,
+      "startDate": "2025-04-01T00:00:00.000Z",
+      "endDate": "2025-04-30T23:59:59.999Z"
+    },
+    {
+      "month": "May 2025",
+      "year": 2025,
+      "monthNumber": 5,
+      "totalAmount": 1950,
+      "transactionCount": 48,
+      "startDate": "2025-05-01T00:00:00.000Z",
+      "endDate": "2025-05-31T23:59:59.999Z"
+    },
+    {
+      "month": "June 2025",
+      "year": 2025,
+      "monthNumber": 6,
+      "totalAmount": 2100,
+      "transactionCount": 52,
+      "startDate": "2025-06-01T00:00:00.000Z",
+      "endDate": "2025-06-30T23:59:59.999Z"
+    }
+  ]
+}
+```
+
+**Example 5: Get monthly trends for last 12 months**
+```bash
+curl -X GET "http://localhost:3000/api/v1/users/67211f56abc123def4567890/spending/monthly-trends?monthCount=12" \
+  -H "Authorization: Bearer <your-jwt-token>"
+```
+
+**Example 6: Using with Swagger UI**
+1. Navigate to `http://localhost:3000/docs`
+2. Click "Authorize" and enter your JWT token
+3. Find the "Spending History" section
+4. Try the `/users/{userId}/spending/summary` endpoint
+5. Fill in:
+   - `userId`: Your user ID
+   - `period`: Select from dropdown (e.g., "current_month")
+6. Click "Execute" to see the results
+
+**Frontend Integration Example (React/React Native)**
+```typescript
+// Fetch spending summary for pie chart visualization
+async function fetchSpendingSummary(userId: string, period: string) {
+  const response = await fetch(
+    `http://localhost:3000/api/v1/users/${userId}/spending/summary?period=${period}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${firebaseToken}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  // Use data.categories for pie chart
+  // Each category has: name, totalAmount, percentage
+  return data;
+}
+
+// Fetch detailed report for export
+async function exportSpendingReport(userId: string, startDate: string, endDate: string) {
+  const response = await fetch(
+    `http://localhost:3000/api/v1/users/${userId}/spending/detailed?period=custom&startDate=${startDate}&endDate=${endDate}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${firebaseToken}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  // Process data.categories to generate CSV/PDF
+  // Each category has transactions array with full details
+  return data;
+}
+
+// Fetch monthly trends for line chart visualization
+async function fetchMonthlyTrends(userId: string, monthCount: number = 6) {
+  const response = await fetch(
+    `http://localhost:3000/api/v1/users/${userId}/spending/monthly-trends?monthCount=${monthCount}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${firebaseToken}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  // Use data.currentMonth for main display ($2,345)
+  // Use data.trend.percentageChange for trend indicator (+12%)
+  // Use data.monthlyBreakdown for line chart data points
+  // Example: data.monthlyBreakdown.map(m => ({ x: m.month, y: m.totalAmount }))
+  return data;
+}
+```
+
 ## Project Structure
 
 ```
@@ -346,7 +646,8 @@ src/
 │   ├── Budget.ts             # Budget model with Zod schema
 │   ├── Category.ts           # Category model with Zod schema
 │   ├── Transaction.ts        # Transaction model with Zod schema
-│   └── Receipt.ts            # Receipt model with Zod schema
+│   ├── Receipt.ts            # Receipt model with Zod schema
+│   └── SpendingHistory.ts    # Spending history models with Zod schemas
 ├── repositories/
 │   ├── ProfileRepository.ts  # Data access layer for profiles
 │   ├── BudgetRepository.ts   # Data access layer for budgets
@@ -358,13 +659,15 @@ src/
 │   ├── BudgetService.ts      # Business logic for budgets
 │   ├── CategoryService.ts    # Business logic for categories
 │   ├── TransactionService.ts # Business logic for transactions
-│   └── ReceiptService.ts     # Business logic for receipts
+│   ├── ReceiptService.ts     # Business logic for receipts
+│   └── SpendingHistoryService.ts # Business logic for spending analytics
 ├── routes/
 │   ├── profile.routes.ts     # Profile REST endpoints
 │   ├── budget.routes.ts      # Budget REST endpoints
 │   ├── categories.routes.ts  # Category REST endpoints (with Zod validation)
 │   ├── transaction.routes.ts # Transaction REST endpoints
-│   └── receipt.routes.ts     # Receipt REST endpoints
+│   ├── receipt.routes.ts     # Receipt REST endpoints
+│   └── spendingHistory.routes.ts # Spending history REST endpoints
 └── index.ts                  # Application entry point
 ```
 

@@ -1,112 +1,116 @@
-import React, { useState, useEffect } from 'react';
-import { Button, View, Text, Alert, StyleSheet } from 'react-native';
-import { useAudioRecorder, AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorderState } from 'expo-audio';
-import { ASSEMBLYAI_API_KEY } from '@env';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Button, Alert, StyleSheet } from 'react-native';
+import {
+  useAudioRecorder, useAudioRecorderState,
+  AudioModule, RecordingPresets, setAudioModeAsync
+} from 'expo-audio';
+import Constants from 'expo-constants';
+
+const ASSEMBLYAI_API_KEY: string | undefined = Constants.expoConfig?.extra?.ASSEMBLYAI_API_KEY;
 
 export default function VoiceRecorder() {
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [transcription, setTranscription] = useState<string | null>(null);
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(audioRecorder);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const state = useAudioRecorderState(recorder);
 
-  // Prompts Microphone permission
   useEffect(() => {
     (async () => {
       const { granted } = await AudioModule.requestRecordingPermissionsAsync();
-      if (!granted) {
-        Alert.alert('Permission to access microphone was denied');
-      }
+      if (!granted) Alert.alert('Permission to access microphone was denied');
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
     })();
   }, []);
 
-  // Recording Audio for API to take
   const record = async () => {
-    try {
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-    } catch (error) {
-      console.error("Failed to start recording", error);
-    }
+    try { await recorder.prepareToRecordAsync(); recorder.record(); }
+    catch (e) { console.error('Failed to start recording', e); }
   };
 
-  // Stops the recording
   const stopRecording = async () => {
     try {
-      await audioRecorder.stop();
-      const uri = audioRecorder.uri;
+      await recorder.stop();
+      const uri = recorder.uri;
       setAudioUri(uri);
-      if (uri) await sendToAssemblyAI(uri);
-    } catch (error) {
-      console.error("Failed to stop recording", error);
-    }
-  };
-
-  // Upload audio and get transcription from AssemblyAI
-  const sendToAssemblyAI = async (uri: string) => {
-    try {
-      // Fetch file as blob
-      const file = await fetch(uri);
-      const fileBlob = await file.blob();
-
-      // Upload to AssemblyAI
-      const uploadRes = await fetch('https://api.assemblyai.com/v2/upload', {
-        method: 'POST',
-        headers: { authorization: ASSEMBLYAI_API_KEY },
-        body: fileBlob,
-      });
-      const uploadData = await uploadRes.json();
-      const audioUrl = uploadData.upload_url;
-
-      // Request transcription
-      const transcriptRes = await fetch('https://api.assemblyai.com/v2/transcript', {
-        method: 'POST',
-        headers: { authorization: ASSEMBLYAI_API_KEY, 'content-type': 'application/json' },
-        body: JSON.stringify({ audio_url: audioUrl }),
-      });
-      const transcriptData = await transcriptRes.json();
-      const transcriptId = transcriptData.id;
-
-      // Poll for transcription result
-      let completed = false;
-      while (!completed) {
-        await new Promise(r => setTimeout(r, 3000));
-        const statusRes = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
-          headers: { authorization: ASSEMBLYAI_API_KEY },
-        });
-        const statusData = await statusRes.json();
-        if (statusData.status === 'completed') {
-          setTranscription(statusData.text);
-          completed = true;
-        } else if (statusData.status === 'failed') {
-          console.error('Transcription failed');
-          completed = true;
-        }
-      }
-    } catch (err) {
-      console.error('Error sending to AssemblyAI:', err);
-    }
+      if (uri) await sendToAssemblyAI(uri, setTranscription);
+    } catch (e) { console.error('Failed to stop recording', e); }
   };
 
   return (
     <View style={styles.container}>
       <Button
-        title={recorderState.isRecording ? 'Stop Recording' : 'Start Recording'}
-        onPress={recorderState.isRecording ? stopRecording : record}
+        title={state.isRecording ? 'Stop Recording' : 'Start Recording'}
+        onPress={state.isRecording ? stopRecording : record}
       />
-      {/* DELETE LINE BELOW --> Only used for testing/maybe for later purposes */}
-      {audioUri && <Text>Recorded Audio: {audioUri}</Text>}
-      {recorderState.isRecording && <Text>Recording... {Math.round(recorderState.durationMillis / 1000)}s</Text>}
+      {audioUri && <Text style={styles.uri}>Recorded Audio: {audioUri}</Text>}
+      {state.isRecording && <Text>Recording… {Math.round(state.durationMillis / 1000)}s</Text>}
       {transcription && (
-        <View style={{ marginTop: 20 }}>
-            <Text style={{ fontWeight: 'bold' }}>You said:</Text>
-            <Text style={{ fontSize: 16 }}>{transcription}</Text>
+        <View style={{ marginTop: 12 }}>
+          <Text style={{ fontWeight: 'bold' }}>You said:</Text>
+          <Text style={{ fontSize: 16 }}>{transcription}</Text>
         </View>
       )}
     </View>
   );
 }
 
+const sendToAssemblyAI = async (
+  uri: string,
+  onTranscribed: (text: string) => void
+) => {
+  try {
+    if (!ASSEMBLYAI_API_KEY) {
+      throw new Error('Missing ASSEMBLYAI_API_KEY in app.json -> expo.extra.* (restart Metro after editing).');
+    }
+
+    const safeJson = async (res: Response) => {
+      const ct = res.headers.get('content-type') || '';
+      const body = await res.text();
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}\n${body.slice(0,300)}`);
+      if (!ct.includes('application/json')) throw new Error(`Expected JSON, got "${ct}". Body: ${body.slice(0,300)}`);
+      return JSON.parse(body);
+    };
+
+    const file = await fetch(uri);
+    const blob = await file.blob();
+
+    // Upload
+    const upRes = await fetch('https://api.assemblyai.com/v2/upload', {
+      method: 'POST',
+      headers: { Authorization: ASSEMBLYAI_API_KEY },  // uses Constants-based key
+      body: blob,
+    });
+    const up = await safeJson(upRes);
+    const audioUrl = up.upload_url;
+    if (!audioUrl) throw new Error(`No upload_url in response: ${JSON.stringify(up)}`);
+
+    // Create transcript
+    const trRes = await fetch('https://api.assemblyai.com/v2/transcript', {
+      method: 'POST',
+      headers: { Authorization: ASSEMBLYAI_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_url: audioUrl }),
+    });
+    const tr = await safeJson(trRes);
+    const id = tr.id;
+    if (!id) throw new Error(`No transcript id: ${JSON.stringify(tr)}`);
+
+    // Poll
+    for (;;) {
+      await new Promise(r => setTimeout(r, 3000));
+      const stRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
+        headers: { Authorization: ASSEMBLYAI_API_KEY },
+      });
+      const st = await safeJson(stRes);
+      if (st.status === 'completed') { onTranscribed(st.text); break; }
+      if (st.status === 'failed') throw new Error(`Transcription failed: ${JSON.stringify(st)}`);
+    }
+  } catch (err) {
+    console.error('Error sending to AssemblyAI:', err);
+    Alert.alert('AssemblyAI Error', String(err));
+  }
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', backgroundColor: '#ecf0f1', padding: 10 },
+  container: { gap: 6, marginTop: 6 },
+  uri: { color: '#666', fontSize: 12 },
 });

@@ -176,6 +176,626 @@ curl http://localhost:27017
 # Should return: It looks like you are trying to access MongoDB over HTTP...
 ```
 
+## Docker Deployment
+
+### Quick Start with Docker Compose
+
+The easiest way to run Parrit with Docker is using Docker Compose, which includes both the application and MongoDB:
+
+1. **Set up environment variables**:
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit .env and add your Firebase service account credentials
+nano .env
+```
+
+2. **Start the application**:
+```bash
+docker-compose up -d
+```
+
+This will:
+- Start MongoDB on port 27017
+- Build and start the Parrit server on port 3000
+- Create a persistent volume for MongoDB data
+- Set up networking between containers
+
+3. **View logs**:
+```bash
+# View all logs
+docker-compose logs -f
+
+# View server logs only
+docker-compose logs -f parrit-server
+```
+
+4. **Stop the application**:
+```bash
+docker-compose down
+
+# To also remove volumes (data)
+docker-compose down -v
+```
+
+### Building and Running with Docker (Without Compose)
+
+If you prefer to use Docker commands directly:
+
+1. **Build the Docker image**:
+```bash
+docker build -t parrit-server .
+```
+
+2. **Run the container**:
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -e NODE_ENV=production \
+  -e MONGODB_URI="mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority" \
+  -e DATABASE_NAME="parrit" \
+  -e FIREBASE_SERVICE_ACCOUNT='{"type":"service_account","project_id":"your-project",...}' \
+  --name parrit \
+  parrit-server
+```
+
+**Note**: When using this method, you need to provide your own MongoDB instance (Atlas or separate container).
+
+3. **View logs**:
+```bash
+docker logs -f parrit
+```
+
+4. **Stop and remove container**:
+```bash
+docker stop parrit
+docker rm parrit
+```
+
+### Docker Configuration Files
+
+- **Dockerfile** - Multi-stage build for optimized production image
+- **docker-compose.yml** - Complete stack with MongoDB
+- **.dockerignore** - Excludes unnecessary files from build
+- **.env.example** - Template for environment variables
+
+### Environment Variables for Docker
+
+Required environment variables (set in `.env` file or pass via `-e` flag):
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MONGODB_URI` | MongoDB connection string | `mongodb://mongodb:27017` (Docker Compose)<br/>`mongodb+srv://user:pass@cluster.mongodb.net/` (Atlas) |
+| `DATABASE_NAME` | Database name | `parrit` |
+| `FIREBASE_SERVICE_ACCOUNT` | Firebase service account JSON (single-line) | `{"type":"service_account",...}` |
+| `NODE_ENV` | Node environment | `production` |
+
+### Health Check
+
+The Docker image includes a health check that pings the `/docs` endpoint every 30 seconds:
+
+```bash
+# Check container health
+docker ps
+
+# View health check logs
+docker inspect --format='{{json .State.Health}}' parrit
+```
+
+### Docker Image Details
+
+- **Base Image**: Node.js 20 Alpine (lightweight and secure)
+- **Architecture**: Multi-stage build
+  - Stage 1: Build TypeScript application
+  - Stage 2: Production runtime (only compiled code and production dependencies)
+- **Security**: Runs as non-root user (`nodejs`)
+- **Size**: Optimized for small image size (~150MB)
+- **Port**: Exposes port 3000
+
+### Accessing the Application
+
+Once running, access:
+- **API**: http://localhost:3000/api/v1
+- **Swagger Documentation**: http://localhost:3000/docs
+
+## Cloud Deployment (Control Plane)
+
+### Production Environment
+
+The Parrit API is deployed on Control Plane and accessible at:
+
+- **Production API**: https://parrit-api-c0m4x6xhjvppr.gcp-us-central1.controlplane.us/api/v1
+- **Swagger Documentation**: https://parrit-api-c0m4x6xhjvppr.gcp-us-central1.controlplane.us/docs/
+
+### What is Control Plane?
+
+Control Plane (controlplane.com) is a virtual cloud platform that abstracts infrastructure across GCP, AWS, and Azure under a unified API. It provides:
+- **Universal Cloud API**: Single interface to manage resources across multiple cloud providers
+- **Container-native Platform**: Built for Kubernetes and containerized workloads
+- **Built-in Image Registry**: Managed container registry for Docker images
+- **Auto-scaling Workloads**: Managed applications with health checks and zero-downtime deployments
+- **Multi-tenant Architecture**: Organizations → GVCs (Global Virtual Clouds) → Workloads
+
+**Learn more**: https://docs.controlplane.com/
+
+### Prerequisites
+
+#### 1. Install Control Plane CLI
+
+**macOS (Homebrew)**:
+```bash
+brew install controlplane-com/tap/cpln
+```
+
+**macOS/Linux (Direct)**:
+```bash
+curl -fsSL https://downloads.controlplane.com/install.sh | sh
+```
+
+**Windows (PowerShell)**:
+```powershell
+iwr https://downloads.controlplane.com/install.ps1 -useb | iex
+```
+
+**Verify installation**:
+```bash
+cpln version
+```
+
+#### 2. Authenticate
+
+```bash
+# Login to Control Plane
+cpln login
+
+# Set default organization (recommended)
+cpln profile update default --org zyngl
+
+# Verify authentication
+cpln profile current
+```
+
+### Build and Push Docker Image
+
+**Important**: Change the version tag each time you build a new image. Never reuse version numbers.
+
+#### Using Semantic Versioning (Recommended for Production)
+
+```bash
+# Format: vMAJOR.MINOR.PATCH (e.g., v1.0.0, v1.2.3)
+VERSION="v1.0.1"  # Increment this for each release
+
+cpln image build \
+  --dockerfile ./Dockerfile \
+  --name parrit-api:$VERSION \
+  --push \
+  --org zyngl
+```
+
+#### Using Git Commit SHA (Recommended for Development)
+
+```bash
+# Automatically use current git commit as version
+VERSION=$(git rev-parse --short HEAD)
+
+cpln image build \
+  --dockerfile ./Dockerfile \
+  --name parrit-api:$VERSION \
+  --push \
+  --org zyngl
+```
+
+#### Manual Version Tags
+
+```bash
+# Build with specific version
+cpln image build \
+  --dockerfile ./Dockerfile \
+  --name parrit-api:002 \
+  --push \
+  --org zyngl
+
+# Next build - increment the number
+cpln image build \
+  --dockerfile ./Dockerfile \
+  --name parrit-api:003 \
+  --push \
+  --org zyngl
+```
+
+**Build Command Breakdown**:
+- `--dockerfile ./Dockerfile` - Path to Dockerfile
+- `--name parrit-api:VERSION` - Image name and tag (change VERSION each time!)
+- `--push` - Automatically push to Control Plane registry after building
+- `--org zyngl` - Your organization name (determines registry namespace)
+
+**Full image path in registry**: `//image/zyngl/parrit-api:VERSION`
+
+### Initial Setup (One-Time Configuration)
+
+#### 1. Create Global Virtual Cloud (GVC)
+
+```bash
+# Create GVC for production environment
+cpln gvc create parrit \
+  --org zyngl \
+  --location gcp-us-central1
+```
+
+#### 2. Create Secrets for Sensitive Data
+
+```bash
+# MongoDB connection string
+cpln secret create mongodb-uri \
+  --gvc parrit \
+  --data "mongodb+srv://admin:password@cluster.mongodb.net/?retryWrites=true&w=majority" \
+  --org zyngl
+
+# Firebase service account (single-line JSON)
+cpln secret create firebase-service-account \
+  --gvc parrit \
+  --data '{"type":"service_account","project_id":"parrit-fc705","private_key":"..."}' \
+  --org zyngl
+```
+
+### Deploy Workload
+
+#### First Deployment (Create Workload)
+
+```bash
+cpln workload create \
+  --name parrit-api \
+  --gvc parrit \
+  --image //image/zyngl/parrit-api:v1.0.0 \
+  --cpu 1 \
+  --memory 1Gi \
+  --port 3000 \
+  --env NODE_ENV=production \
+  --env DATABASE_NAME=parrit \
+  --env-from-secret MONGODB_URI=mongodb-uri \
+  --env-from-secret FIREBASE_SERVICE_ACCOUNT=firebase-service-account \
+  --min-scale 1 \
+  --max-scale 5 \
+  --org zyngl
+```
+
+#### Update Existing Workload (Deploy New Version)
+
+```bash
+# Deploy new version
+cpln workload update parrit-api \
+  --gvc parrit-prod \
+  --image //image/zyngl/parrit-api:v1.0.1 \
+  --org zyngl
+```
+
+### Version Tagging Best Practices
+
+**Semantic Versioning (Production)**:
+- `v1.0.0` - Major release (breaking changes)
+- `v1.1.0` - Minor release (new features, backward compatible)
+- `v1.1.1` - Patch release (bug fixes)
+
+**Development Tags**:
+- Git SHA: `abc1234` (traceability to exact code)
+- Date-based: `2025-11-01` (time-based tracking)
+- Branch-based: `feature-auth` (feature testing)
+
+**Rules**:
+1. **Never reuse tags** - Each build must have a unique version
+2. **Match git tags** - Tag your git commits to match image versions
+3. **Document changes** - Keep a CHANGELOG.md for version history
+4. **Avoid `latest`** - Always use explicit versions in production
+
+**Example Workflow**:
+```bash
+# Tag your git commit
+git tag v1.0.1
+git push --tags
+
+# Build and push with same version
+cpln image build --name parrit-api:v1.0.1 --push --org zyngl
+
+# Deploy the specific version
+cpln workload update parrit-api --image //image/zyngl/parrit-api:v1.0.1 --org zyngl
+```
+
+### Environment Variables Management
+
+#### Direct Environment Variables (Non-Sensitive)
+
+```bash
+cpln workload update parrit-api \
+  --gvc parrit-prod \
+  --env NODE_ENV=production \
+  --env DATABASE_NAME=parrit \
+  --org zyngl
+```
+
+#### Using Secrets (Sensitive Data)
+
+```bash
+# Create secret
+cpln secret create my-secret \
+  --gvc parrit-prod \
+  --data "secret-value" \
+  --org zyngl
+
+# Reference in workload
+cpln workload update parrit-api \
+  --gvc parrit-prod \
+  --env-from-secret MY_VAR=my-secret \
+  --org zyngl
+```
+
+#### Update Secret Values
+
+```bash
+# Update existing secret
+cpln secret update mongodb-uri \
+  --gvc parrit-prod \
+  --data "new-connection-string" \
+  --org zyngl
+
+# Restart workload to pick up new value
+cpln workload restart parrit-api --gvc parrit-prod --org zyngl
+```
+
+### Monitoring and Operations
+
+#### View Deployment Status
+
+```bash
+cpln workload get parrit-api \
+  --gvc parrit-prod \
+  --org zyngl
+```
+
+#### Stream Logs
+
+```bash
+# Follow logs in real-time
+cpln workload logs parrit-api \
+  --gvc parrit-prod \
+  --org zyngl \
+  --follow
+
+# View last 100 lines
+cpln workload logs parrit-api \
+  --gvc parrit-prod \
+  --org zyngl \
+  --tail 100
+
+# Filter by time (last hour)
+cpln workload logs parrit-api \
+  --gvc parrit-prod \
+  --org zyngl \
+  --since 1h
+```
+
+#### Get Public Endpoint URL
+
+```bash
+cpln workload get parrit-api \
+  --gvc parrit-prod \
+  --org zyngl \
+  --output json | jq -r '.status.endpoint'
+```
+
+#### Scale Workload
+
+```bash
+# Adjust scaling parameters
+cpln workload update parrit-api \
+  --gvc parrit-prod \
+  --min-scale 2 \
+  --max-scale 10 \
+  --org zyngl
+```
+
+#### Rollback to Previous Version
+
+```bash
+# Deploy previous stable version
+cpln workload update parrit-api \
+  --gvc parrit-prod \
+  --image //image/zyngl/parrit-api:v1.0.0 \
+  --org zyngl
+```
+
+#### Restart Workload
+
+```bash
+# Restart all replicas
+cpln workload restart parrit-api \
+  --gvc parrit-prod \
+  --org zyngl
+```
+
+### Common Commands Reference
+
+```bash
+# List all workloads in GVC
+cpln workload get --gvc parrit-prod --org zyngl
+
+# List all images in registry
+cpln image get --org zyngl
+
+# Delete old image version
+cpln image delete parrit-api:old-version --org zyngl
+
+# View workload replicas
+cpln workload replica list parrit-api --gvc parrit-prod --org zyngl
+
+# Get workload metrics
+cpln workload metrics parrit-api --gvc parrit-prod --org zyngl
+
+# List all secrets
+cpln secret get --gvc parrit-prod --org zyngl
+
+# View GVC details
+cpln gvc get parrit-prod --org zyngl
+```
+
+### CI/CD Integration
+
+#### GitHub Actions Example
+
+Create `.github/workflows/deploy-production.yml`:
+
+```yaml
+name: Deploy to Control Plane Production
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (e.g., v1.0.0)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Control Plane CLI
+        run: |
+          curl -fsSL https://downloads.controlplane.com/install.sh | sh
+          echo "$HOME/.cpln/bin" >> $GITHUB_PATH
+
+      - name: Authenticate with Control Plane
+        run: |
+          cpln profile create github-actions \
+            --token ${{ secrets.CPLN_TOKEN }} \
+            --org zyngl
+
+      - name: Build and Push Docker Image
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Building version: $VERSION"
+
+          cpln image build \
+            --dockerfile ./Dockerfile \
+            --name parrit-api:$VERSION \
+            --push \
+            --org zyngl
+
+      - name: Deploy to Production
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Deploying version: $VERSION"
+
+          cpln workload update parrit-api \
+            --gvc parrit-prod \
+            --image //image/zyngl/parrit-api:$VERSION \
+            --org zyngl
+
+      - name: Verify Deployment
+        run: |
+          echo "Waiting for deployment to stabilize..."
+          sleep 30
+
+          cpln workload get parrit-api \
+            --gvc parrit-prod \
+            --org zyngl
+```
+
+**Required GitHub Secrets**:
+- `CPLN_TOKEN`: Create a service token at https://console.controlplane.com/profile/tokens
+
+**Usage**:
+```bash
+# Create and push a version tag
+git tag v1.0.1
+git push origin v1.0.1
+
+# GitHub Actions will automatically build and deploy
+```
+
+### Troubleshooting
+
+#### Build Fails with Permission Error
+
+```bash
+# Ensure you're authenticated
+cpln login
+
+# Verify organization access
+cpln org get zyngl
+
+# Check your profile
+cpln profile current
+```
+
+#### Workload Not Starting
+
+```bash
+# Check workload status and events
+cpln workload get parrit-api --gvc parrit-prod --org zyngl
+
+# View detailed logs for errors
+cpln workload logs parrit-api --gvc parrit-prod --org zyngl --follow
+
+# Check replica status
+cpln workload replica list parrit-api --gvc parrit-prod --org zyngl
+```
+
+#### Environment Variables Not Loading
+
+```bash
+# Verify secrets exist
+cpln secret get --gvc parrit-prod --org zyngl
+
+# Check workload environment configuration
+cpln workload get parrit-api \
+  --gvc parrit-prod \
+  --org zyngl \
+  --output json | jq '.spec.containers[0].env'
+
+# Restart workload to reload environment
+cpln workload restart parrit-api --gvc parrit-prod --org zyngl
+```
+
+#### Database Connection Issues
+
+```bash
+# Test MongoDB connection string
+# (Run locally first with the connection string from secrets)
+
+# Check if workload can reach MongoDB
+cpln workload logs parrit-api --gvc parrit-prod --org zyngl | grep -i mongo
+
+# Verify secret value
+cpln secret get mongodb-uri --gvc parrit-prod --org zyngl
+```
+
+#### Cannot Access Deployed API
+
+```bash
+# Get the public endpoint
+cpln workload get parrit-api \
+  --gvc parrit-prod \
+  --org zyngl \
+  --output json | jq -r '.status.endpoint'
+
+# Check if workload is healthy
+cpln workload get parrit-api --gvc parrit-prod --org zyngl
+
+# View recent logs for HTTP errors
+cpln workload logs parrit-api --gvc parrit-prod --org zyngl --tail 50
+```
+
+### Additional Resources
+
+- **Control Plane Documentation**: https://docs.controlplane.com/
+- **CLI Reference**: https://docs.controlplane.com/reference/cli
+- **Workload Guide**: https://docs.controlplane.com/guides/workload
+- **Image Registry**: https://docs.controlplane.com/reference/image
+- **Secrets Management**: https://docs.controlplane.com/reference/secret
+- **Console UI**: https://console.controlplane.com/
+
 ## Running the Application
 
 ### Development Mode

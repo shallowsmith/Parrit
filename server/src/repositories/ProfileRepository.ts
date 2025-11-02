@@ -47,7 +47,7 @@ export class ProfileRepository {
    * @returns {Promise<Profile>} The created profile with generated ID
    * @throws {Error} If profile creation fails
    */
-  async createProfile(profileData: CreateProfileRequest): Promise<Profile> {
+  async createProfile(profileData: CreateProfileRequest & { firebaseUid: string }): Promise<Profile> {
     const collection = this.ensureCollection();
     // Add timestamps for audit trail
     const now = new Date();

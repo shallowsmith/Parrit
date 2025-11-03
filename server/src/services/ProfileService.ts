@@ -11,6 +11,7 @@ import type {
   UpdateProfileRequest,
   ProfileResponse
 } from '../models/Profile';
+import { setCustomUserClaims } from '../config/firebase-admin.js';
 import { z } from 'zod';
 
 /**
@@ -40,26 +41,53 @@ export class ProfileService {
    * Business logic includes:
    * - Input validation and sanitization
    * - Email uniqueness check
+   * - Setting Firebase custom claims with the new user ID
    * - Data transformation for response
    *
    * @param {any} profileData - Raw profile data from request
+   * @param {string} firebaseUid - Firebase user ID extracted from JWT
    * @returns {Promise<ProfileResponse>} Created profile response
    * @throws {ProfileValidationError} If validation fails or email exists
    */
-  async createProfile(profileData: any): Promise<ProfileResponse> {
-    // Step 1: Validate and sanitize input data
+  async createProfile(profileData: any, firebaseUid: string): Promise<ProfileResponse> {
+    // Step 1: Validate firebaseUid
+    if (!firebaseUid || typeof firebaseUid !== 'string') {
+      throw new ProfileValidationError('Invalid Firebase user ID');
+    }
+
+    // Step 2: Validate and sanitize input data
     const validatedData = validateCreateProfileRequest(profileData);
 
-    // Step 2: Business rule - Email must be unique
+    // Step 3: Business rule - Email must be unique
     const existingProfile = await this.profileRepository.findProfileByEmail(validatedData.email);
     if (existingProfile) {
       throw new ProfileValidationError('Email already exists', 'email');
     }
 
-    // Step 3: Persist to database
-    const createdProfile = await this.profileRepository.createProfile(validatedData);
+    // Step 4: Add firebaseUid to profile data
+    const profileWithFirebaseUid = {
+      ...validatedData,
+      firebaseUid
+    };
 
-    // Step 4: Transform to response format
+    // Step 5: Persist to database
+    const createdProfile = await this.profileRepository.createProfile(profileWithFirebaseUid);
+
+    // Step 6: Set custom claims on Firebase user
+    // This allows the userId to be included in future JWT tokens
+    try {
+      const userId = createdProfile._id?.toString();
+      if (userId) {
+        await setCustomUserClaims(firebaseUid, userId);
+        console.log(`Custom claims set for Firebase user ${firebaseUid} with userId ${userId}`);
+      }
+    } catch (error) {
+      console.error('Failed to set custom claims:', error);
+      // Note: Profile is already created, so we don't throw here
+      // The user can still use the system, but may need to refresh token manually
+    }
+
+    // Step 7: Transform to response format
     return toProfileResponse(createdProfile);
   }
 

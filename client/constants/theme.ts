@@ -51,3 +51,19 @@ export const Fonts = Platform.select({
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
+
+/**
+ * App-specific colors for Parrit Finance Tracker
+ * Based on the UI design mockups
+ */
+export const AppColors = {
+  primary: '#6FA85F',           // Green buttons and accents
+  background: '#000000',         // Pure black background
+  surface: '#1A1A1A',           // Slightly lighter for cards
+  inputBg: '#3A4A3A',           // Dark green input background
+  inputBorder: '#4A5A4A',       // Input border color
+  text: '#FFFFFF',              // White text
+  textSecondary: '#B0B0B0',     // Gray secondary text
+  error: '#FF4444',             // Error red
+  disabled: '#808080',          // Disabled state
+};

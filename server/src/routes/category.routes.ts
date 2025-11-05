@@ -271,4 +271,30 @@ router.put("/:id", authenticateToken, requireSameUser('userId'), async (req: Req
   }
 });
 
+
+router.delete("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
+  try {
+    const deleted = await categoryService.deleteCategory(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Category not found' });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    if (error instanceof CategoryValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+router.post('/dedupe', authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
+  try {
+    const result = await categoryService.dedupeCategoriesForUser(req.params.userId);
+    res.json({ merged: result });
+  } catch (err) {
+    console.error('Failed to dedupe categories', err);
+    res.status(500).json({ error: 'Failed to dedupe categories' });
+  }
+});
+
 export default router;

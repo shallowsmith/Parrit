@@ -12,6 +12,12 @@ export const transactionService = {
   getTransactions: (userId: string) => {
     return api.get(`/users/${userId}/transactions`);
   },
+  updateTransaction: (userId: string, id: string, payload: any) => {
+    return api.put(`/users/${userId}/transactions/${id}`, payload);
+  },
+  deleteTransaction: (userId: string, id: string) => {
+    return api.delete(`/users/${userId}/transactions/${id}`);
+  },
 };
 
 export default transactionService;

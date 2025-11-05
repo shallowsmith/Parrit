@@ -41,7 +41,7 @@ function wordsToNumber(words: string): number | null {
 
 export function extractAmount(text: string): number | null {
   if (!text) return null;
-  const s = text;
+  const s = String(text).replace(/,/g, '');
 
   // handle numeric with k/m suffix like "11k", "1.3k", "2M"
   const suffixNum = s.match(/([0-9]+(?:\.[0-9]+)?)\s*([kKmM])\b/);

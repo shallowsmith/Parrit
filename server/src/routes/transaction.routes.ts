@@ -302,4 +302,17 @@ router.put("/:id", authenticateToken, requireSameUser('userId'), async (req: Req
   }
 });
 
+router.delete("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
+  try {
+    const deleted = await transactionService.deleteTransaction(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

@@ -1,34 +1,38 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Button, Alert } from 'react-native';
 import BudgetDonut from '@/components/BudgetDonut';
 import TransactionsList from '@/components/TransactionsList';
+import TransactionFilter from '@/components/TransactionFilter';
+import { normalizeCategoryKey } from '@/constants/categoryColors';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/contexts/AuthContext';
 import budgetService from '@/services/budget.service';
 import transactionService from '@/services/transaction.service';
-import { on, off } from '@/utils/events';
+import categoryService from '@/services/category.service';
+import { categoryServiceWritable } from '@/services/category.service';
+import { on } from '@/utils/events';
+import { emit } from '@/utils/events';
 
-// Category -> colors for each differnt category
-const CATEGORY_COLORS: Record<string, string> = {
-  food: '#10B981', // green
-  rent: '#EF4444', // red
-  utilities: '#3B82F6', // blue
-  transportation: '#F59E0B', // amber
-  entertainment: '#8B5CF6', // purple
-  travel: '#06B6D4', // teal
-  gift: '#EC4899', // pink
-  misc: '#ffe100ff', // yellow
-};
-
-const FALLBACK_COLORS = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#06B6D4', '#A78BFA', '#F97316'];
 
 export default function BudgetOverview() {
   const { profile } = useAuth();
   const [budget, setBudget] = useState<any | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingTx, setEditingTx] = useState<any | null>(null);
+  const [editDescription, setEditDescription] = useState('');
+  const [editVendor, setEditVendor] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategoryInput, setEditCategoryInput] = useState('');
+  const [editBudgetModalVisible, setEditBudgetModalVisible] = useState(false);
+  const [editBudgetAmount, setEditBudgetAmount] = useState('');
+  const [editBudgetRemaining, setEditBudgetRemaining] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [filters, setFilters] = useState<{ startDate?: string; endDate?: string; categories?: string[] }>({});
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -37,8 +41,9 @@ export default function BudgetOverview() {
     Promise.all([
       budgetService.getBudgets(profile.id),
       transactionService.getTransactions(profile.id),
+      categoryService.getCategories(profile.id),
     ])
-      .then(([bRes, tRes]) => {
+      .then(([bRes, tRes, cRes]) => {
         if (!mounted) return;
         const budgets = bRes.data || [];
         // pick the most recent budget
@@ -47,7 +52,9 @@ export default function BudgetOverview() {
 
         const txs = Array.isArray(tRes.data) ? tRes.data : [];
         setTransactions(txs);
-  setSelectedGroup(null);
+        const cats = Array.isArray(cRes.data) ? cRes.data : [];
+        setCategories(cats);
+        setSelectedGroup(null);
       })
       .catch((err) => {
         console.error('Failed to load budgets/transactions', err);
@@ -58,29 +65,126 @@ export default function BudgetOverview() {
   useEffect(() => {
     if (!profile?.id) return;
     const handler = () => {
-      Promise.all([budgetService.getBudgets(profile.id), transactionService.getTransactions(profile.id)])
-        .then(([bRes, tRes]) => {
+      Promise.all([budgetService.getBudgets(profile.id), transactionService.getTransactions(profile.id), categoryService.getCategories(profile.id)])
+        .then(([bRes, tRes, cRes]) => {
           const budgets = bRes.data || [];
           const chosen = budgets.length ? budgets[0] : null;
           setBudget(chosen);
           const txs = Array.isArray(tRes.data) ? tRes.data : [];
           setTransactions(txs);
+          const cats = Array.isArray(cRes.data) ? cRes.data : [];
+          setCategories(cats);
         })
         .catch((err) => console.error('Failed to refresh budgets/transactions', err));
     };
 
-    const unsubscribe = on('transactions:changed', handler);
-    return () => { unsubscribe(); };
+    const unsubscribeTx = on('transactions:changed', handler);
+    const unsubscribeCat = on('categories:changed', handler);
+    return () => { unsubscribeTx(); unsubscribeCat(); };
   }, [profile?.id]);
 
-  const totalSpent = useMemo(() => transactions.reduce((s, t) => s + (t.amount || 0), 0), [transactions]);
+  // Handler when a transaction is selected from the list
+  const handleSelectTransaction = (tx: any) => {
+    setEditingTx(tx);
+    setEditDescription(tx.description || '');
+    setEditVendor(tx.vendorName || '');
+    setEditAmount(String(tx.amount || ''));
+    const cat = categories.find((c: any) => String(c.id) === String(tx.categoryId) || String(c._id) === String(tx.categoryId));
+    setEditCategoryInput(cat ? (cat.name || String(cat.id || cat._id)) : String(tx.categoryId || ''));
+    setEditModalVisible(true);
+  };
 
-  // Group transactions by categoryId or if undefined then make it misc
+  const resolveCategoryForEdit = async (rawInput: string) => {
+    const raw = String(rawInput || '').trim();
+    if (!raw) return 'misc';
+    let found = categories.find((c: any) => String(c.id) === raw || String(c._id) === raw);
+    if (found) return found.id || found._id;
+    found = categories.find((c: any) => String(c.name || '').toLowerCase() === raw.toLowerCase());
+    if (found) return found.id || found._id;
+    if (profile?.id) {
+      try {
+        const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
+        const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id });
+        const created = createRes.data;
+        try { emit('categories:changed'); } catch (e) { /* ignore */ }
+        return created.id || created._id || raw;
+      } catch (err: any) {
+        if (err?.response?.status === 409) {
+          try {
+            const res = await categoryService.getCategories(profile.id);
+            const cats = Array.isArray(res.data) ? res.data : [];
+            const match = cats.find((c: any) => String(c.name || '').toLowerCase() === raw.toLowerCase());
+            if (match) return match.id || match._id || raw;
+          } catch (e) { /* fallthrough */ }
+        }
+        console.warn('Failed to create/find category', err);
+      }
+    }
+    return 'misc';
+  };
+
+  const saveEditedTransaction = async () => {
+    if (!editingTx) return;
+    if (!profile?.id) { Alert.alert('Not signed in'); return; }
+    const parsedAmount = Number(editAmount);
+    if (!parsedAmount || parsedAmount <= 0) { Alert.alert('Invalid amount', 'Please enter a positive amount.'); return; }
+    try {
+      const resolvedCategoryId = await resolveCategoryForEdit(editCategoryInput || '');
+      const payload: any = {
+        vendorName: editVendor || 'Unknown',
+        description: editDescription || '',
+        amount: parsedAmount,
+        categoryId: resolvedCategoryId || 'misc',
+      };
+      const txId = editingTx.id || editingTx._id;
+      const res = await transactionService.updateTransaction(profile.id, txId, payload);
+      // Update local state
+      const updated = res.data || res;
+      setTransactions(prev => prev.map(t => (String(t.id || t._id) === String(txId) ? updated : t)));
+      try { emit('transactions:changed'); } catch (e) { /* ignore */ }
+      setEditModalVisible(false);
+      setEditingTx(null);
+    } catch (err) {
+      console.error('Failed to save edited transaction', err);
+      const msg = (err as any)?.response?.data?.error || String(err);
+      Alert.alert('Save failed', msg);
+    }
+  };
+
+  const visibleTransactions = useMemo(() => {
+    const all = transactions || [];
+    let res = all.slice();
+    if (filters.startDate) {
+      const sd = new Date(filters.startDate).getTime();
+      res = res.filter((t) => new Date(t.dateTime || t.createdAt || 0).getTime() >= sd);
+    }
+    if (filters.endDate) {
+      const ed = new Date(filters.endDate);
+      ed.setHours(23, 59, 59, 999);
+      const ett = ed.getTime();
+      res = res.filter((t) => new Date(t.dateTime || t.createdAt || 0).getTime() <= ett);
+    }
+    if (filters.categories && filters.categories.length) {
+      res = res.filter((t) => {
+        const key = String(t.categoryId || '').toLowerCase();
+        return filters.categories!.some((cid) => {
+          return String(cid) === String(t.categoryId) || String(cid) === String(t.categoryId || t.category || cid) || String(cid).toLowerCase() === String((t.categoryId || '').toLowerCase());
+        });
+      });
+    }
+    return res;
+  }, [transactions, filters]);
+
+  const totalSpent = useMemo(() => visibleTransactions.reduce((s, t) => s + (t.amount || 0), 0), [visibleTransactions]);
+
   const grouped = useMemo(() => {
     const m = new Map<string, { key: string; label: string; total: number; txs: any[] }>();
-    transactions.forEach((tx) => {
+    const source = visibleTransactions || [];
+    source.forEach((tx) => {
       const key = tx.categoryId || 'misc';
-      const label = tx.categoryId || tx.vendorName || 'Misc';
+      const foundCat = categories.find((c: any) => String(c.id) === String(key) || String(c._id) === String(key));
+      const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
+      const label = foundCat ? (capitalize(foundCat.name || 'Misc')) : (tx.vendorName || 'Misc');
       const existing = m.get(key);
       const amt = Math.abs(tx.amount || 0);
       if (existing) {
@@ -91,18 +195,29 @@ export default function BudgetOverview() {
       }
     });
     return Array.from(m.values());
-  }, [transactions]);
+  }, [visibleTransactions, categories]);
 
   const totalBudget = budget?.amount ?? 0;
-  const remaining = budget?.remaining ?? Math.max(0, totalBudget - totalSpent);
+  // Always compute remaining from the budget total minus what has been spent so it stays in sync
+  const remaining = Math.max(0, totalBudget - totalSpent);
 
   return (
     <ThemedView style={styles.container}>
       <View style={styles.topRow}>
-        <View style={styles.leftBox}>
+        <TouchableOpacity
+          style={[styles.leftBox, { paddingVertical: 8 }]}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+          onPress={() => {
+            setEditBudgetAmount(String(totalBudget || ''));
+            setEditBudgetRemaining(String(remaining || ''));
+            setEditBudgetModalVisible(true);
+          }}
+        >
           <Text style={styles.smallText}>Total Budget</Text>
           <Text style={styles.largeText}>${totalBudget.toFixed(2)}</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.rightBox}>
           <Text style={styles.smallText}>Remaining</Text>
           <Text style={[styles.largeText, { color: remaining < 0 ? '#EF4444' : '#10B981' }]}>${remaining.toFixed(2)}</Text>
@@ -113,12 +228,132 @@ export default function BudgetOverview() {
         <View style={styles.wheelContainer}>
           {/* Donut chart (separate widget) */}
           <View style={styles.svgWrapper}>
-            <BudgetDonut grouped={grouped} selectedGroup={selectedGroup} setSelectedGroup={setSelectedGroup} totalSpent={totalSpent} />
+            <BudgetDonut grouped={grouped} selectedGroup={selectedGroup} setSelectedGroup={setSelectedGroup} totalSpent={totalSpent} categories={categories} />
           </View>
         </View>
 
+        {/* Filter bar (below donut) */}
+        <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
+          <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={{ padding: 8, marginRight: 12 }}>
+            <Text style={{ color: '#60A5FA' }}>Filter</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { setFilters({}); }} style={{ padding: 8 }}>
+            <Text style={{ color: '#9CA3AF' }}>Clear Filters</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TransactionFilter
+          visible={filterModalVisible}
+          onClose={() => setFilterModalVisible(false)}
+          categories={categories}
+          initial={{ startDate: filters.startDate, endDate: filters.endDate, categories: filters.categories }}
+          onClear={() => { setFilters({}); }}
+          onApply={(f) => { setFilters(f); }}
+        />
+
         {/* Transactions list (separate widget) */}
-        <TransactionsList transactions={transactions} onSelectTransaction={() => setSelectedGroup(null)} />
+  <TransactionsList transactions={visibleTransactions} onSelectTransaction={handleSelectTransaction} categories={categories} />
+
+      {/* Edit transaction modal */}
+      <Modal visible={editModalVisible} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#051218', borderRadius: 12, padding: 16 }}>
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Edit Transaction</Text>
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Vendor</Text>
+            <TextInput value={editVendor} onChangeText={setEditVendor} style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Description</Text>
+            <TextInput value={editDescription} onChangeText={setEditDescription} style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Amount</Text>
+            <TextInput value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Category (name or id)</Text>
+            <TextInput value={editCategoryInput} onChangeText={setEditCategoryInput} placeholder="e.g. Groceries" style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditingTx(null); }} style={{ padding: 10, marginRight: 8 }}>
+                <Text style={{ color: '#9CA3AF' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => {
+                if (!editingTx) return;
+                const txId = editingTx.id || editingTx._id;
+                Alert.alert('Delete transaction', 'Are you sure you want to delete this transaction? This action cannot be undone.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: async () => {
+                    try {
+                      if (!profile?.id) { Alert.alert('Not signed in'); return; }
+                      await transactionService.deleteTransaction(profile.id, txId);
+                      // remove locally and emit
+                      setTransactions(prev => prev.filter(t => String(t.id || t._id) !== String(txId)));
+                      try { emit('transactions:changed'); } catch (e) { /* ignore */ }
+                      setEditModalVisible(false);
+                      setEditingTx(null);
+                    } catch (err) {
+                      console.error('Failed to delete transaction', err);
+                      const msg = (err as any)?.response?.data?.error || String(err);
+                      Alert.alert('Delete failed', msg);
+                    }
+                  } }
+                ]);
+              }} style={{ padding: 10, marginRight: 8 }}>
+                <Text style={{ color: '#EF4444' }}>Delete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={saveEditedTransaction} style={{ padding: 10, backgroundColor: '#0ea5a7', borderRadius: 8 }}>
+                <Text style={{ color: '#fff' }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Budget edit modal */}
+      <Modal visible={editBudgetModalVisible} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#051218', borderRadius: 12, padding: 16 }}>
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Edit Budget</Text>
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Total amount</Text>
+            <TextInput value={editBudgetAmount} onChangeText={setEditBudgetAmount} keyboardType="numeric" style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Remaining / Balance</Text>
+            <View style={{ backgroundColor: '#0b1220', padding: 10, borderRadius: 8, marginBottom: 12 }}>
+              <Text style={{ color: '#fff' }}>{editBudgetRemaining}</Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <TouchableOpacity onPress={() => { setEditBudgetModalVisible(false); }} style={{ padding: 10, marginRight: 8 }}>
+                <Text style={{ color: '#9CA3AF' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={async () => {
+                const parsedAmount = Number(editBudgetAmount);
+                if (isNaN(parsedAmount)) { Alert.alert('Invalid input'); return; }
+                try {
+                  if (profile?.id) {
+                    if (budget && (budget.id || budget._id)) {
+                      const bid = budget.id || budget._id;
+                      const remainingCalc = Math.max(0, parsedAmount - totalSpent);
+                      const res = await budgetService.updateBudget(profile.id, bid, { amount: parsedAmount, remaining: remainingCalc });
+                      const updated = res.data || res;
+                      setBudget(updated);
+                    } else {
+                      const now = new Date();
+                      const month = now.toLocaleString(undefined, { month: 'long' });
+                      const year = now.getFullYear();
+                      const remainingCalc = Math.max(0, parsedAmount - totalSpent);
+                      const res = await budgetService.createBudget(profile.id, { userId: profile.id, month, year, amount: parsedAmount, remaining: remainingCalc });
+                      const created = res.data || res;
+                      setBudget(created);
+                    }
+                  }
+                  setEditBudgetModalVisible(false);
+                } catch (err) {
+                  console.error('Failed to update/create budget', err);
+                  const msg = (err as any)?.response?.data?.error || String(err);
+                  Alert.alert('Save failed', msg);
+                }
+              }} style={{ padding: 10, backgroundColor: '#0ea5a7', borderRadius: 8 }}>
+                <Text style={{ color: '#fff' }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       </View>
     </ThemedView>
   );

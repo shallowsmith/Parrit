@@ -10,6 +10,7 @@ import transactionService from '@/services/transaction.service';
 import huggingfaceService from '@/services/huggingface.service';
 import { extractAmount } from '@/utils/amount';
 import { mapTextToBucketByKeywords } from '@/utils/category';
+import { emit } from '@/utils/events';
 
 const ASSEMBLYAI_API_KEY: string | undefined = Constants.expoConfig?.extra?.ASSEMBLYAI_API_KEY;
 
@@ -44,8 +45,19 @@ export default function VoiceRecorder() {
   }, []);
 
   const record = async () => {
-    try { await recorder.prepareToRecordAsync(); recorder.record(); }
-    catch (e) { console.error('Failed to start recording', e); }
+    try {
+      // Clear previous transaction data that was not saved
+      setTranscription(null);
+      setTranscriptRaw(null);
+      setAssemblyUploadUrl(null);
+      setVendorName('');
+      setAmount('');
+      setCategoryId('uncategorized');
+      setAudioUri(null);
+
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+    } catch (e) { console.error('Failed to start recording', e); }
   };
 
   const stopRecording = async () => {
@@ -152,6 +164,7 @@ export default function VoiceRecorder() {
         setCategoryId('uncategorized');
         setTranscription(null);
         setAudioUri(null);
+        try { emit('transactions:changed'); } catch (e) { console.warn('emit failed', e); }
       } else {
         Alert.alert('Unexpected response', `Status ${res.status}`);
       }

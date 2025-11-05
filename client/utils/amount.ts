@@ -43,6 +43,36 @@ export function extractAmount(text: string): number | null {
   if (!text) return null;
   const s = text;
 
+  // handle numeric with k/m suffix like "11k", "1.3k", "2M"
+  const suffixNum = s.match(/([0-9]+(?:\.[0-9]+)?)\s*([kKmM])\b/);
+  if (suffixNum) {
+    const n = parseFloat(suffixNum[1]);
+    const suf = suffixNum[2].toLowerCase();
+    if (suf === 'k') return n * 1000;
+    if (suf === 'm') return n * 1000000;
+  }
+
+  // handle word-number with k/m like "eleven k dollars" or "one point three k"
+  const wordSuffix = s.match(/([a-z\s-]+?)\s*([kKmM])\b/i);
+  if (wordSuffix) {
+    const words = wordSuffix[1];
+    const n = wordsToNumber(words);
+    if (n !== null) {
+      const suf = wordSuffix[2].toLowerCase();
+      if (suf === 'k') return n * 1000;
+      if (suf === 'm') return n * 1000000;
+    }
+  }
+
+  // handle numeric + "hundred" or "thousand" e.g. "13 hundred", "11 thousand"
+  const numberMultiplier = s.match(/([0-9]+(?:\.[0-9]+)?)\s*(hundred|thousand)\b/i);
+  if (numberMultiplier) {
+    const base = parseFloat(numberMultiplier[1]);
+    const mult = numberMultiplier[2].toLowerCase();
+    if (mult === 'hundred') return base * 100;
+    if (mult === 'thousand') return base * 1000;
+  }
+
   const dollarWithCents = s.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)(?:\s*(?:and|,)\s*([0-9]+(?:\.[0-9]{1,2})?)\s*cents?)?/i);
   if (dollarWithCents) {
     const dollars = parseFloat(dollarWithCents[1]);

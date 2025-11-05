@@ -9,6 +9,9 @@ export const transactionService = {
   createTransaction: (userId: string, payload: any) => {
     return api.post(`/users/${userId}/transactions`, payload);
   },
+  getTransactions: (userId: string) => {
+    return api.get(`/users/${userId}/transactions`);
+  },
 };
 
 export default transactionService;

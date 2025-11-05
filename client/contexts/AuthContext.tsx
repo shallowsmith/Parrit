@@ -11,12 +11,13 @@
  * - Persists auth state
  */
 
-import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { firebaseService } from '@/services/firebase.service';
 import { authService } from '@/services/auth.service';
+import { profileService } from '@/services/profile.service';
 import type { AuthState, Profile } from '@/types/auth.types';
 
 interface AuthContextType extends AuthState {
@@ -28,6 +29,7 @@ interface AuthContextType extends AuthState {
   ) => Promise<{ success: boolean }>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<void>;
+  updateProfile: (updatedData: Partial<Profile>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -206,8 +208,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await firebaseService.refreshToken(true);
   };
 
+  // Function to update user profile
+  const updateProfile = async (updatedData: Partial<Profile>) => {
+    console.log('[AuthContext] Updating profile...');
+    console.log('[AuthContext] Current profile:', state.profile);
+    console.log('[AuthContext] Profile ID:', state.profile?.id);
+    
+    if (!state.profile?.id) {
+      throw new Error('No profile ID found');
+    }
+
+    try {
+      console.log('[AuthContext] Calling API with ID:', state.profile.id);
+      console.log('[AuthContext] Update data:', updatedData);
+      
+      // Call API to update profile
+      const updatedProfile = await profileService.updateProfile(
+        state.profile.id,
+        updatedData
+      );
+
+      console.log('[AuthContext] Profile updated successfully');
+
+      // Update local state with new profile data
+      setState(prev => ({
+        ...prev,
+        profile: updatedProfile,
+      }));
+    } catch (error: any) {
+      console.error('[AuthContext] Failed to update profile:', error);
+      console.error('[AuthContext] Error response:', error.response?.data);
+      console.error('[AuthContext] Error status:', error.response?.status);
+      throw error;
+    }
+  };
+
+  const value = useMemo(
+    () => ({ ...state, login, register, logout, refreshToken, updateProfile }),
+    [state]
+  );
+
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, refreshToken }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

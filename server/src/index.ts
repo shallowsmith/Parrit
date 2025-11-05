@@ -22,6 +22,7 @@ import categoryRoutes from "./routes/category.routes";
 import transactionRoutes from "./routes/transaction.routes";
 import receiptRoutes from "./routes/receipt.routes";
 import spendingHistoryRoutes from "./routes/spendingHistory.routes";
+import huggingfaceRoutes from "./routes/huggingface.routes";
 
 // Create Express application instance
 const app = express();
@@ -45,6 +46,7 @@ app.use("/api/v1/users/:userId/receipts", receiptRoutes);
 
 // Spending history routes (aggregated spending reports)
 app.use("/api/v1/users/:userId/spending", spendingHistoryRoutes);
+app.use("/api/v1/inference", huggingfaceRoutes);
 
 /**
  * Starts the application server.

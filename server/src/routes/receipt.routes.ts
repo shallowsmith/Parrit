@@ -295,4 +295,83 @@ router.put("/:id", async (req: Request, res: Response) => {
   }
 });
 
+// allows client to upload receipt --> backend --> send to Google Vision (OCR)/OpenAI --> return structured data --> save to MongoDB
+/**
+ * @swagger
+ * /api/v1/users/{userId}/receipts/scan:
+ *   post:
+ *     summary: Upload a receipt image, extract text, and generate structured transaction data
+ *     tags: [Receipts]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID (MongoDB ObjectId)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Extracted receipt data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     merchant:
+ *                       type: string
+ *                       example: "Starbucks"
+ *                     date:
+ *                       type: string
+ *                       example: "2025-10-05"
+ *                     total:
+ *                       type: number
+ *                       example: 7.25
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                           price:
+ *                             type: number
+ */
+
+import multer from "multer";
+const upload = multer({ dest: "uploads/" });
+
+router.post("/scan", upload.single("file"), async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId;
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Delegate processing to service layer
+    const result = await receiptService.processReceipt(userId, req.file.path);
+
+    res.status(200).json(result);
+  } catch (error: any) {
+    console.error("Error scanning receipt:", error);
+    res.status(500).json({ error: error.message || "Internal server error" });
+  }
+});
+
+
 export default router;

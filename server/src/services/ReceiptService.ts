@@ -1,195 +1,205 @@
-import { ReceiptRepository } from '../repositories/ReceiptRepository';
+import { ImageAnnotatorClient } from "@google-cloud/vision";
+import fs from "fs";
+//import fetch from "node-fetch";
+import { z } from "zod";
+import { ReceiptRepository } from "../repositories/ReceiptRepository";
 import {
   ReceiptValidationError,
   validateCreateReceiptRequest,
   toReceiptResponse,
-  updateReceiptSchema
-} from '../models/Receipt';
+  updateReceiptSchema,
+} from "../models/Receipt";
 import type {
-  Receipt,
-  CreateReceiptRequest,
+  ReceiptResponse,
   UpdateReceiptRequest,
-  ReceiptResponse
-} from '../models/Receipt';
-import { z } from 'zod';
+} from "../models/Receipt";
 
 /**
- * Service class for Receipt business logic.
- *
- * Implements the Service Layer pattern to:
- * - Encapsulate business rules and validation
- * - Orchestrate repository operations
- * - Transform data between layers
- * - Handle business-specific errors
- *
- * This layer sits between routes (presentation) and repositories (data access),
- * ensuring separation of concerns and maintainability.
- *
- * @swagger
- * tags:
- *   name: Receipts
- *   description: Receipt management endpoints for tracking transactions and expenses
+ * ReceiptService
+ * --------------
+ * Handles all business logic for receipts:
+ * - OCR text extraction
+ * - Transaction parsing
+ * - Category prediction (via Hugging Face)
+ * - Validation + MongoDB persistence
  */
 export class ReceiptService {
   private receiptRepository: ReceiptRepository;
 
   constructor() {
-    // Initialize repository for data access
-    // In a larger app, this would be injected for better testability
     this.receiptRepository = new ReceiptRepository();
   }
 
-  /**
-     * Creates a new receipt with validation and business rules.
-     *
-     * Business logic includes:
-     * - Input validation and sanitization
-     * - Data transformation for response
-     *
-     * @param {any} receiptData - Raw receipt data from request
-     * @returns {Promise<ReceiptResponse>} Created receipt response
-     * @throws {ReceiptValidationError} If validation fails
-     */
-    async createReceipt(receiptData: any): Promise<ReceiptResponse> {
-      // Step 1: Validate and sanitize input data
-      const validatedData = validateCreateReceiptRequest(receiptData);
+  /** ✅ Create a new receipt manually */
+  async createReceipt(receiptData: any): Promise<ReceiptResponse> {
+    const validatedData = validateCreateReceiptRequest(receiptData);
+    const createdReceipt = await this.receiptRepository.createReceipt(validatedData);
+    return toReceiptResponse(createdReceipt);
+  }
 
-      // Step 2: Persist to database
-      const createdReceipt = await this.receiptRepository.createReceipt(validatedData);
+  /** 🔍 Get a receipt by ID */
+  async getReceiptById(id: string): Promise<ReceiptResponse | null> {
+    if (!id || typeof id !== "string") {
+      throw new ReceiptValidationError("Invalid receipt ID");
+    }
+    const receipt = await this.receiptRepository.findReceiptById(id);
+    return receipt ? toReceiptResponse(receipt) : null;
+  }
 
-      // Step 3: Transform to response format
-      return toReceiptResponse(createdReceipt);
+  /** 📜 Get all receipts */
+  async getAllReceipts(): Promise<ReceiptResponse[]> {
+    const receipts = await this.receiptRepository.findAllReceipts();
+    return receipts.map(toReceiptResponse);
+  }
+
+  /** 👤 Get receipts by user ID */
+  async getReceiptsByUserId(userId: string): Promise<ReceiptResponse[]> {
+    if (!userId || typeof userId !== "string") {
+      throw new ReceiptValidationError("Invalid user ID");
+    }
+    const receipts = await this.receiptRepository.findByUserId(userId);
+    return receipts.map(toReceiptResponse);
+  }
+
+  /** 🏷️ Get receipts by category ID */
+  async getReceiptsByCategoryId(categoryId: string): Promise<ReceiptResponse[]> {
+    if (!categoryId || typeof categoryId !== "string") {
+      throw new ReceiptValidationError("Invalid category ID");
+    }
+    const receipts = await this.receiptRepository.findByCategoryId(categoryId);
+    return receipts.map(toReceiptResponse);
+  }
+
+  /** ✏️ Update receipt */
+  async updateReceipt(id: string, updateData: any): Promise<ReceiptResponse | null> {
+    if (!id || typeof id !== "string") {
+      throw new ReceiptValidationError("Invalid receipt ID");
     }
 
-    /**
-       * Retrieves a receipt by ID.
-       *
-       * @param {string} id - The receipt ID
-       * @returns {Promise<ReceiptResponse | null>} Receipt or null if not found
-       * @throws {ReceiptValidationError} If ID is invalid
-       */
-      async getReceiptById(id: string): Promise<ReceiptResponse | null> {
-        // Validate ID format
-        if (!id || typeof id !== 'string') {
-          throw new ReceiptValidationError('Invalid receipt ID');
-        }
+    const existingReceipt = await this.receiptRepository.findReceiptById(id);
+    if (!existingReceipt) return null;
 
-        const receipt = await this.receiptRepository.findReceiptById(id);
-
-        if (!receipt) {
-          return null;
-        }
-
-        return toReceiptResponse(receipt);
+    let validatedData: Partial<UpdateReceiptRequest>;
+    try {
+      validatedData = updateReceiptSchema.parse(updateData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const message = error.issues[0]?.message || "Validation failed";
+        throw new ReceiptValidationError(
+          message,
+          error.issues[0]?.path[0]?.toString()
+        );
       }
+      throw error;
+    }
 
-      /**
-         * Retrieves all receipts.
-         *
-         * @returns {Promise<ReceiptResponse[]>} Array of all receipts
-         */
-        async getAllReceipts(): Promise<ReceiptResponse[]> {
-          const receipts = await this.receiptRepository.findAllReceipts();
-          return receipts.map(receipt => toReceiptResponse(receipt));
+    const updatedReceipt = await this.receiptRepository.updateReceipt(id, validatedData);
+    return updatedReceipt ? toReceiptResponse(updatedReceipt) : null;
+  }
+
+  /** 🗑️ Delete a receipt */
+  async deleteReceipt(id: string): Promise<boolean> {
+    if (!id || typeof id !== "string") {
+      throw new ReceiptValidationError("Invalid receipt ID");
+    }
+    return await this.receiptRepository.deleteReceipt(id);
+  }
+
+  /** ⚙️ Initialize database indexes */
+  async initializeIndexes(): Promise<void> {
+    await this.receiptRepository.createIndexes();
+  }
+
+  /**
+   * 🧾 Process scanned receipt image:
+   *  1. Extract text (Google Vision)
+   *  2. Parse total, date, merchant
+   *  3. Predict category via Hugging Face
+   *  4. Save to MongoDB
+   */
+  async processReceipt(userId: string, filePath: string): Promise<ReceiptResponse> {
+    const visionClient = new ImageAnnotatorClient({
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    });
+
+    const HF_API_URL =
+      "https://api-inference.huggingface.co/models/kuro-08/bert-transaction-categorization";
+
+    /** 🧠 Helper — Predict category using Hugging Face */
+    async function predictCategory(description: string): Promise<string> {
+      try {
+        const response = await fetch(HF_API_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ inputs: description }),
+        });
+
+        const result = await response.json();
+        if (Array.isArray(result) && result[0]?.label) {
+          return result[0].label;
+        } else if (Array.isArray(result) && result[0]?.length > 0) {
+          return result[0][0]?.label || "Uncategorized";
+        } else {
+          return "Uncategorized";
         }
-
-        /**
-         * Retrieves all receipts for a specific user.
-         *
-         * @param {string} userId - The user ID
-         * @returns {Promise<ReceiptResponse[]>} Array of user's receipts
-         */
-        async getReceiptsByUserId(userId: string): Promise<ReceiptResponse[]> {
-          if (!userId || typeof userId !== 'string') {
-            throw new ReceiptValidationError('Invalid user ID');
-          }
-
-          const receipts = await this.receiptRepository.findByUserId(userId);
-          return receipts.map(receipt => toReceiptResponse(receipt));
-        }
-
-        /**
-         * Retrieves all receipts for a specific category.
-         *
-         * @param {string} categoryId - The category ID
-         * @returns {Promise<ReceiptResponse[]>} Array of category's receipts
-         */
-        async getReceiptsByCategoryId(categoryId: string): Promise<ReceiptResponse[]> {
-          if (!categoryId || typeof categoryId !== 'string') {
-            throw new ReceiptValidationError('Invalid category ID');
-          }
-
-          const receipts = await this.receiptRepository.findByCategoryId(categoryId);
-          return receipts.map(receipt => toReceiptResponse(receipt));
-        }
-
-    /**
-       * Updates an existing receipt with validation.
-       *
-       * Supports partial updates - only provided fields are updated.
-       *
-       * @param {string} id - The receipt ID to update
-       * @param {any} updateData - Partial receipt data to update
-       * @returns {Promise<ReceiptResponse | null>} Updated receipt or null
-       * @throws {ReceiptValidationError} If validation fails
-       */
-      async updateReceipt(id: string, updateData: any): Promise<ReceiptResponse | null> {
-        // Validate ID
-        if (!id || typeof id !== 'string') {
-          throw new ReceiptValidationError('Invalid receipt ID');
-        }
-
-        // Check if receipt exists
-        const existingReceipt = await this.receiptRepository.findReceiptById(id);
-        if (!existingReceipt) {
-          return null;
-        }
-
-        // Validate update data using Zod schema
-        let validatedData: Partial<UpdateReceiptRequest>;
-        try {
-          validatedData = updateReceiptSchema.parse(updateData);
-        } catch (error) {
-          if (error instanceof z.ZodError) {
-            const message = error.issues[0]?.message || 'Validation failed';
-            throw new ReceiptValidationError(
-              message,
-              error.issues[0]?.path[0]?.toString()
-            );
-          }
-          throw error;
-        }
-
-        // Update receipt in database
-        const updatedReceipt = await this.receiptRepository.updateReceipt(id, validatedData);
-
-        if (!updatedReceipt) {
-          return null;
-        }
-
-        return toReceiptResponse(updatedReceipt);
+      } catch (error) {
+        console.error("⚠️ Hugging Face API error:", error);
+        return "Uncategorized";
       }
+    }
 
-    /**
-       * Deletes a receipt by ID.
-       *
-       * @param {string} id - The receipt ID to delete
-       * @returns {Promise<boolean>} True if deleted, false if not found
-       * @throws {ReceiptValidationError} If ID is invalid
-       */
-      async deleteReceipt(id: string): Promise<boolean> {
-        if (!id || typeof id !== 'string') {
-          throw new ReceiptValidationError('Invalid receipt ID');
-        }
+    try {
+      // STEP 1 — Extract text from image via OCR
+      const [result] = await visionClient.textDetection(filePath);
+      const detections = result.textAnnotations;
+      const fullText = detections?.[0]?.description || "";
 
-        return await this.receiptRepository.deleteReceipt(id);
-      }
+      console.log("🧾 OCR Extracted Text:", fullText.slice(0, 150));
 
-      /**
-       * Initializes database indexes.
-       * Should be called during application startup.
-       */
-      async initializeIndexes(): Promise<void> {
-        await this.receiptRepository.createIndexes();
-      }
+      // STEP 2 — Parse text to extract merchant, date, total
+      const merchantMatch = fullText.match(/(?:at|from)\s+([A-Za-z\s]+)/i);
+      const totalMatch = fullText.match(/\bTotal\s*[:\-]?\s*\$?(\d+(\.\d{1,2})?)/i);
+      const dateMatch = fullText.match(
+        /\b(\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4})\b/
+      );
+
+      const merchant = merchantMatch?.[1]?.trim() || "Unknown Merchant";
+      const total = totalMatch ? parseFloat(totalMatch[1]) : 0;
+      const date = dateMatch ? new Date(dateMatch[1]) : new Date();
+
+      // STEP 3 — Predict category via Hugging Face
+      const description = `Transaction at ${merchant}: ${fullText.slice(0, 200)}`;
+      const category = await predictCategory(description);
+
+      // STEP 4 — Delete temporary file
+      fs.unlinkSync(filePath);
+
+      // STEP 5 — Save structured receipt
+      const receiptData = {
+        merchantName: merchant,
+        amount: total,
+        date,
+        categoryId: category,
+        userId,
+        imageUrl: "",
+        notes: "Auto-extracted and categorized via Hugging Face",
+      };
+
+      const validatedData = validateCreateReceiptRequest(receiptData);
+      const createdReceipt = await this.receiptRepository.createReceipt(validatedData);
+
+      // STEP 6 — Return formatted response with prediction
+      const response = toReceiptResponse(createdReceipt);
+      return {
+        ...response,
+        predictedCategory: category,
+      };
+    } catch (error) {
+      console.error("❌ Receipt processing failed:", error);
+      throw new Error("Failed to process and save receipt");
+    }
+  }
 }

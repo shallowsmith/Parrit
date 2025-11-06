@@ -1,5 +1,4 @@
 import React from 'react';
-import { Image } from 'expo-image';
 import { Platform, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
 
@@ -8,30 +7,14 @@ import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
-import VoiceRecorder from '@/components/VoiceTransactionWidget';
 import BudgetOverview from '@/components/BudgetOverview';
 
 export default function HomeScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }
-    >
+    <ParallaxScrollView>
       {/* Budget overview + transactions */}
-      <ThemedView style={{ marginBottom: 12 }}>
+      <ThemedView style={{ marginBottom: 0 }}>
         <BudgetOverview />
-      </ThemedView>
-
-      {/* Voice recorder for testing / quick entry */}
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Voice Recorder</ThemedText>
-        <ThemedText>Use the voice recorder below to test audio recording and upload functionality.</ThemedText>
-        <VoiceRecorder />
       </ThemedView>
     </ParallaxScrollView>
   );

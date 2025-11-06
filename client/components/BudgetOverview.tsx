@@ -223,7 +223,7 @@ export default function BudgetOverview() {
         </TouchableOpacity>
         <View style={styles.rightBox}>
           <Text style={styles.smallText}>Remaining</Text>
-          <Text style={[styles.largeText, { color: remaining < 0 ? '#EF4444' : '#10B981' }]}>${remaining.toFixed(2)}</Text>
+          <Text style={[styles.largeText, { color: remaining < 0 ? '#EF4444' : '#7DA669' }]}>${remaining.toFixed(2)}</Text>
         </View>
       </View>
 
@@ -262,15 +262,19 @@ export default function BudgetOverview() {
           onApply={(f) => { setFilters(f); }}
         />
 
-        {/* Categories modal (opened by the new Categories button) */}
+        {/* Categories modal */}
         <Modal visible={categoriesModalVisible} transparent animationType="slide">
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#071012', padding: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '80%' }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(16, 19, 15, 0.3)', justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: '#000000', padding: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '80%' }}>
               <View style={{ paddingHorizontal: 8 }}>
                 <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Categories</Text>
               </View>
+              {/* Close button (X) in top-right of the modal */}
+              <TouchableOpacity onPress={() => setCategoriesModalVisible(false)} style={{ position: 'absolute', right: 16, top: 16, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Close categories">
+                <Text style={{ color: '#9CA3AF', fontSize: 20 }}>✕</Text>
+              </TouchableOpacity>
               <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 32 }}>
-                {/* Default categories (seeded list) */}
+                {/* Default categories */}
                 <Text style={{ color: '#9CA3AF', marginTop: 6, marginBottom: 6 }}>Default Categories</Text>
                 {(() => {
                   const defaults = ['Food','Groceries','Rent','Utilities','Transportation','Entertainment','Travel','Gifts','Misc'];
@@ -281,7 +285,7 @@ export default function BudgetOverview() {
                     return (
                       <View key={`def-${dn}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
                         <Text style={{ color: '#fff', fontSize: 16 }}>{dn}</Text>
-                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#10B981' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
+                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
                           {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
                         </TouchableOpacity>
                       </View>
@@ -301,7 +305,7 @@ export default function BudgetOverview() {
                     return (
                       <View key={id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
                         <Text style={{ color: '#fff', fontSize: 16 }}>{c.name}</Text>
-                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#10B981' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
+                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
                           {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
                         </TouchableOpacity>
                       </View>
@@ -331,11 +335,6 @@ export default function BudgetOverview() {
                   </TouchableOpacity>
                 </View>
                 <View style={{ height: 16 }} />
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                  <TouchableOpacity onPress={() => setCategoriesModalVisible(false)} style={{ padding: 10 }}>
-                    <Text style={{ color: '#9CA3AF' }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
               </ScrollView>
             </View>
           </View>
@@ -347,16 +346,16 @@ export default function BudgetOverview() {
       {/* Edit transaction modal */}
       <Modal visible={editModalVisible} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#051218', borderRadius: 12, padding: 16 }}>
+          <View style={{ backgroundColor: '#000000', borderRadius: 12, padding: 16 }}>
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Edit Transaction</Text>
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Vendor</Text>
-            <TextInput value={editVendor} onChangeText={setEditVendor} style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <TextInput value={editVendor} onChangeText={setEditVendor} style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Description</Text>
-            <TextInput value={editDescription} onChangeText={setEditDescription} style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <TextInput value={editDescription} onChangeText={setEditDescription} style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Amount</Text>
-            <TextInput value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <TextInput value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Category (name or id)</Text>
-            <TextInput value={editCategoryInput} onChangeText={setEditCategoryInput} placeholder="e.g. Groceries" style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <TextInput value={editCategoryInput} onChangeText={setEditCategoryInput} placeholder="e.g. Groceries" style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
 
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
               <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditingTx(null); }} style={{ padding: 10, marginRight: 8 }}>
@@ -386,7 +385,7 @@ export default function BudgetOverview() {
               }} style={{ padding: 10, marginRight: 8 }}>
                 <Text style={{ color: '#EF4444' }}>Delete</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={saveEditedTransaction} style={{ padding: 10, backgroundColor: '#0ea5a7', borderRadius: 8 }}>
+              <TouchableOpacity onPress={saveEditedTransaction} style={{ padding: 10, backgroundColor: '#7DA669', borderRadius: 8 }}>
                 <Text style={{ color: '#fff' }}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -400,9 +399,9 @@ export default function BudgetOverview() {
           <View style={{ backgroundColor: '#051218', borderRadius: 12, padding: 16 }}>
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Edit Budget</Text>
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Total amount</Text>
-            <TextInput value={editBudgetAmount} onChangeText={setEditBudgetAmount} keyboardType="numeric" style={{ backgroundColor: '#0b1220', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <TextInput value={editBudgetAmount} onChangeText={setEditBudgetAmount} keyboardType="numeric" style={{ backgroundColor: '#000000', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Remaining / Balance</Text>
-            <View style={{ backgroundColor: '#0b1220', padding: 10, borderRadius: 8, marginBottom: 12 }}>
+            <View style={{ backgroundColor: '#000000', padding: 10, borderRadius: 8, marginBottom: 12 }}>
               <Text style={{ color: '#fff' }}>{editBudgetRemaining}</Text>
             </View>
 
@@ -437,7 +436,7 @@ export default function BudgetOverview() {
                   const msg = (err as any)?.response?.data?.error || String(err);
                   Alert.alert('Save failed', msg);
                 }
-              }} style={{ padding: 10, backgroundColor: '#0ea5a7', borderRadius: 8 }}>
+              }} style={{ padding: 10, backgroundColor: '#7DA669', borderRadius: 8 }}>
                 <Text style={{ color: '#fff' }}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -450,8 +449,8 @@ export default function BudgetOverview() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 12, marginBottom: 12, backgroundColor: '#0f172a', borderRadius: 12 },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  container: { padding: 12, marginBottom: 12, backgroundColor: '#000000', borderRadius: 12 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingTop: 50 },
   leftBox: { flex: 1 },
   rightBox: { flex: 1, alignItems: 'flex-end' },
   smallText: { color: '#9CA3AF', fontSize: 12 },
@@ -475,7 +474,7 @@ const styles = StyleSheet.create({
   legendAmount: { color: '#9CA3AF', fontSize: 12, marginLeft: 8 },
   transactionsContainer: { width: '100%', marginTop: 8 },
   dateHeader: { color: '#9CA3AF', fontSize: 12, marginBottom: 8 },
-  txCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0b1220', borderRadius: 12, padding: 12, marginBottom: 8 },
+  txCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#000000', borderRadius: 12, padding: 12, marginBottom: 8 },
   txAccent: { width: 6, height: '100%', borderRadius: 8, marginRight: 12 },
   txContent: { flex: 1 },
   txVendor: { color: '#fff', fontSize: 16, fontWeight: '700' },

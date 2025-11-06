@@ -35,7 +35,7 @@ export default function BudgetDonut({ grouped, selectedGroup, setSelectedGroup, 
                       key={i}
                       d={pathForRender}
                       fill={color}
-                      stroke="#0b1220"
+                      stroke="#000000"
                       strokeWidth={isSelected ? 3 : 1}
                       onPress={() => setSelectedGroup(group)}
                     />

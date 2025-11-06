@@ -14,6 +14,9 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { View } from 'react-native';
+import { AppColors } from '@/constants/theme';
+import VoiceRecorder from '@/components/VoiceTransactionWidget';
 
 function RootLayoutNav() {
   const { isAuthenticated, loading } = useAuth();
@@ -52,7 +55,7 @@ function RootLayoutNav() {
   console.log('[RootLayout] Rendering main stack navigation');
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: AppColors.background } }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
@@ -64,8 +67,13 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <ThemeProvider value={DarkTheme}>
-        <RootLayoutNav />
-        <StatusBar style="light" />
+        {/* Ensure the app root background is black so no white margins show */}
+        <View style={{ flex: 1, backgroundColor: AppColors.background }}>
+            <RootLayoutNav />
+            {/* Mount the voice recorder at the app root so it can be used from any tab via the global event */}
+            <VoiceRecorder />
+          <StatusBar style="light" />
+        </View>
       </ThemeProvider>
     </AuthProvider>
   );

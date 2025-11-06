@@ -10,6 +10,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import transactionService from '@/services/transaction.service';
 import huggingfaceService from '@/services/huggingface.service';
 import categoryService, { categoryServiceWritable } from '@/services/category.service';
+import { on } from '@/utils/events';
+import { DEFAULT_NEW_CATEGORY_COLOR } from '@/constants/categoryColors';
 import { extractAmount } from '@/utils/amount';
 import { mapTextToBucketByKeywords } from '@/utils/category';
 import { emit } from '@/utils/events';
@@ -25,6 +27,8 @@ export default function VoiceRecorder() {
   const [assemblyUploadUrl, setAssemblyUploadUrl] = useState<string | null>(null);
   const [vendorName, setVendorName] = useState('');
   const [amount, setAmount] = useState('');
+  const [parsedPaymentType, setParsedPaymentType] = useState<string | null>(null);
+  const [parsedDateISO, setParsedDateISO] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState('uncategorized');
   const [categoryBuckets, setCategoryBuckets] = useState<CategoryChip[]>(() => [
     { id: 'misc', label: 'Misc' },
@@ -37,7 +41,8 @@ export default function VoiceRecorder() {
 
 
   const PREFERRED_LABEL_MAP: Record<string, string[]> = {
-    food: ['Groceries', 'Food'],
+    // prefer an explicit 'Food' category over 'Groceries' for things like coffee
+    food: ['Food', 'Dining', 'Restaurants'],
     groceries: ['Groceries'],
     rent: ['Rent'],
     utilities: ['Utilities'],
@@ -108,6 +113,35 @@ export default function VoiceRecorder() {
       }
     })();
     return () => { mounted = false; };
+  }, [profile?.id]);
+
+  // Refresh local category buckets when other parts of the app emit a categories change
+  useEffect(() => {
+    if (!profile?.id) return;
+    let mounted = true;
+    const handler = async () => {
+      try {
+        const res = await categoryService.getCategories(profile.id);
+        if (!mounted) return;
+        const cats = Array.isArray(res.data) ? res.data : [];
+        const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
+        const mapped = cats.map((c: any) => ({ id: c.id || c._id, label: capitalize(c.name || ''), serverId: c.id || c._id }));
+        const withMisc = [{ id: 'misc', label: 'Misc' }, ...mapped];
+        const seen = new Map<string, any>();
+        const deduped = withMisc.filter(c => {
+          const key = String(c.label || '').toLowerCase();
+          if (seen.has(key)) return false;
+          seen.set(key, true);
+          return true;
+        });
+        setCategoryBuckets(deduped);
+      } catch (err) {
+        console.warn('Failed to refresh categories on event', err);
+      }
+    };
+
+    const unsubscribe = on('categories:changed', handler);
+    return () => { mounted = false; unsubscribe(); };
   }, [profile?.id]);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const state = useAudioRecorderState(recorder);
@@ -211,10 +245,139 @@ export default function VoiceRecorder() {
 
   useEffect(() => {
     if (!transcription) return;
-    const atMatch = transcription.match(/(?:at|from)\s+([A-Za-z0-9&\.\'\-\s]{2,40})/i);
+    // capture vendor but avoid grabbing trailing time phrases like "this morning" or filler like "for some food"
+    // stop before common delimiters: this/today/yesterday/tomorrow/on/in/at/for or punctuation
+    const atMatch = transcription.match(/(?:at|from)\s+([\w&\.\'\- ]+?)(?=(?:\s+(?:this|today|yesterday|tomorrow|on|in|at|for)\b|[.,]|$))/i);
     if (atMatch) {
-      const vendor = atMatch[1].trim().replace(/[\.,]$/, '');
-      if (!vendorName) setVendorName(vendor);
+      let vendor = atMatch[1].trim().replace(/[\.,]$/, '');
+  // strip common trailing tokens that slipped through (times and 'for some food' style phrases)
+  vendor = vendor.replace(/\b(this|today|yesterday|tomorrow|this morning|this evening|this afternoon)\b/gi, '').trim();
+  // remove trailing 'for ...' phrases that describe the purchase rather than the vendor
+  vendor = vendor.replace(/\bfor\s+(?:some\s+)?(?:food|coffee|lunch|dinner|breakfast|snack|a meal|takeout|some)\b/gi, '').trim();
+  // strip common payment phrase tails like 'using my credit card', 'via credit card', 'using my debit card', 'with my card'
+  vendor = vendor.replace(/\b(?:using|via|with|on)\s+(?:my\s+)?(?:credit card|debit card|visa|mastercard|amex|american express|apple pay|google pay|gpay|card|card)\b/gi, '').trim();
+  // remove any remaining trailing 'using/via/with ...' fragments (generic)
+  vendor = vendor.replace(/\b(?:using|via|with|on)\b.*$/i, '').trim();
+  // as a last resort, if ' for ' remains with generic tail, strip it
+  vendor = vendor.replace(/\bfor\b.*$/i, '').trim();
+      if (!vendorName && vendor) setVendorName(vendor);
+    }
+  }, [transcription]);
+
+  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const extractShortDescription = (text: string, vendor: string | null) => {
+    if (!text) return '';
+    let s = String(text);
+    // remove vendor phrase if present
+    if (vendor) {
+      try {
+        const v = escapeRegex(vendor);
+        s = s.replace(new RegExp('(?:at|from)\\s+' + v, 'i'), '');
+      } catch (e) {
+        // ignore regex errors
+      }
+    }
+    // remove amount expressions
+    s = s.replace(/\$\s*[0-9]+(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?\s*(?:dollars|bucks|usd)\b/gi, '');
+    // remove payment type words
+    s = s.replace(/\b(visa|mastercard|master card|amex|american express|credit card|debit card|debit|cash|apple pay|google pay|gpay)\b/gi, '');
+    // remove filler verbs
+    s = s.replace(/\b(i\s+(spent|bought|paid|purchased)|spent|bought|paid|purchased|for|cost|on|at)\b/gi, '');
+    // capture time word like 'this morning'
+    const timeMatch = s.match(/\b(this\s+(morning|afternoon|evening|night)|this morning|today|yesterday|tomorrow)\b/i);
+    let timeWord = null as string | null;
+    if (timeMatch) {
+      const w = (timeMatch[2] || timeMatch[1] || '').toString();
+      timeWord = w.replace(/this\s+/i, '').trim().toLowerCase();
+      s = s.replace(timeMatch[0], '');
+    }
+    // clean up
+    s = s.replace(/\b(a|an|the|my|the)\b/gi, ' ');
+    s = s.replace(/\s+/g, ' ').trim();
+    // pick a short noun: last word (prefer 'coffee' from 'cup of coffee')
+    const parts = s.split(' ').filter(Boolean);
+    let noun = parts.length ? parts[parts.length - 1] : '';
+    if (/^cup$/i.test(noun) && parts.length >= 2) noun = parts[parts.length - 2];
+    let desc = '';
+    if (timeWord) desc = `${timeWord} ${noun}`.trim();
+    else desc = noun || s.slice(0, 30);
+    desc = capitalize(desc || '').trim();
+    if (!desc) desc = capitalize(text.slice(0, Math.min(30, text.length))).trim();
+    return desc;
+  };
+
+  // Parse payment type and date from transcription
+  const parsePaymentType = (text: string): string | null => {
+    if (!text) return null;
+    const t = text.toLowerCase();
+    if (/\b(visa)\b/.test(t)) return 'Visa';
+    if (/\b(mastercard|master card|master-card)\b/.test(t)) return 'Mastercard';
+    if (/\b(amex|american express)\b/.test(t)) return 'Amex';
+    if (/\b(credit card|credit)\b/.test(t)) return 'Credit Card';
+    if (/\b(debit card|debit)\b/.test(t)) return 'Debit Card';
+    if (/\b(cash)\b/.test(t)) return 'Cash';
+    if (/\b(apple pay|applepay)\b/.test(t)) return 'Apple Pay';
+    if (/\b(google pay|googlepay|gpay)\b/.test(t)) return 'Google Pay';
+    return null;
+  };
+
+  const parseDateFromText = (text: string): string | null => {
+    if (!text) return null;
+    const t = text.toLowerCase();
+    const now = new Date();
+    // simple relative words
+    if (/\byesterday\b/.test(t)) {
+      return new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
+    }
+    if (/\btoday\b/.test(t)) return now.toISOString();
+    if (/\btomorrow\b/.test(t)) return new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
+
+    // ISO date like 2025-10-06
+    const iso = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    if (iso) {
+      const d = new Date(iso[1]);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    }
+
+    // common mm/dd/yyyy or m/d/yy
+    const md = text.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/);
+    if (md) {
+      const parsed = new Date(md[1]);
+      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    }
+
+    // 'on Oct 6' or 'on October 6, 2025'
+    const monthPattern = /\b(?:on\s*)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s.,]*(\d{1,2})(?:st|nd|rd|th)?(?:[\s,]*(\d{4}))?/i;
+    const m = text.match(monthPattern);
+    if (m) {
+      const months = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 } as Record<string, number>;
+      const monKey = m[1].slice(0,3).toLowerCase();
+      const monthIdx = months[monKey];
+      const day = parseInt(m[2], 10);
+      const year = m[3] ? parseInt(m[3], 10) : now.getFullYear();
+      const d = new Date(year, monthIdx, day);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    }
+
+    return null;
+  };
+
+  useEffect(() => {
+    if (!transcription) {
+      setParsedPaymentType(null);
+      setParsedDateISO(null);
+      return;
+    }
+    try {
+      const pt = parsePaymentType(transcription || '');
+      const dt = parseDateFromText(transcription || '');
+      setParsedPaymentType(pt);
+      setParsedDateISO(dt);
+    } catch (err) {
+      console.warn('Failed parsing payment/date from transcription', err);
+      setParsedPaymentType(null);
+      setParsedDateISO(null);
     }
   }, [transcription]);
 
@@ -242,18 +405,14 @@ export default function VoiceRecorder() {
       const raw = String(categoryId).trim();
       if (!raw) return 'misc';
 
-      // Exact id match in buckets
       let found = categoryBuckets.find((c: any) => String(c.id) === raw || String(c.serverId || '') === raw);
       if (found) return found.serverId || found.id || raw;
 
-      // Match by label (case-insensitive)
       found = categoryBuckets.find((c: any) => String(c.label || '').toLowerCase() === raw.toLowerCase());
       if (found) return found.serverId || found.id;
 
-      // If signed in, try to create the category on server (will fail if already exists)
       if (profile?.id) {
         try {
-          // First, try to find an existing server category that matches the raw label
           try {
             const res = await categoryService.getCategories(profile.id);
             const cats = Array.isArray(res.data) ? res.data : [];
@@ -263,13 +422,11 @@ export default function VoiceRecorder() {
             // ignore and continue to create
           }
 
-          const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id });
+          const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
           const created = createRes.data;
-          // emit so UI refreshes
           try { emit('categories:changed'); } catch (e) { /* ignore */ }
           return created.id || created._id || raw;
         } catch (err: any) {
-          // If conflict (already exists), fetch categories and return the existing id
           if (err?.response?.status === 409) {
             try {
               const res = await categoryService.getCategories(profile.id);
@@ -293,10 +450,13 @@ export default function VoiceRecorder() {
     const payload = {
       userId: profile.id,
       vendorName: vendorName || 'Unknown',
+      // use the full transcription as the description
       description: transcription,
-      dateTime: new Date().toISOString(),
+      // prefer parsed date from transcription when available
+      dateTime: parsedDateISO || new Date().toISOString(),
       amount: parsedAmount,
-      paymentType: 'Unknown',
+      // prefer parsed payment type when available; default to Credit Card when not present
+      paymentType: parsedPaymentType || 'Credit Card',
       categoryId: resolvedCategoryId || 'misc',
       // Attach assembly AI info so backend can store the original audio and transcript
       assembly: {

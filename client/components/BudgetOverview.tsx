@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput,
 import BudgetDonut from '@/components/BudgetDonut';
 import TransactionsList from '@/components/TransactionsList';
 import TransactionFilter from '@/components/TransactionFilter';
-import { normalizeCategoryKey } from '@/constants/categoryColors';
+import { normalizeCategoryKey, DEFAULT_NEW_CATEGORY_COLOR } from '@/constants/categoryColors';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,6 +32,9 @@ export default function BudgetOverview() {
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Record<string, boolean>>({});
   const [filters, setFilters] = useState<{ startDate?: string; endDate?: string; categories?: string[] }>({});
 
   useEffect(() => {
@@ -104,7 +107,7 @@ export default function BudgetOverview() {
     if (profile?.id) {
       try {
         const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
-        const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id });
+        const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
         const created = createRes.data;
         try { emit('categories:changed'); } catch (e) { /* ignore */ }
         return created.id || created._id || raw;
@@ -233,13 +236,21 @@ export default function BudgetOverview() {
         </View>
 
         {/* Filter bar (below donut) */}
-        <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
-          <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={{ padding: 8, marginRight: 12 }}>
-            <Text style={{ color: '#60A5FA' }}>Filter</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { setFilters({}); }} style={{ padding: 8 }}>
-            <Text style={{ color: '#9CA3AF' }}>Clear Filters</Text>
-          </TouchableOpacity>
+        <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => setCategoriesModalVisible(true)} style={{ padding: 8, marginRight: 16 }}>
+              <Text style={{ color: '#60A5FA' }}>Categories</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={{ padding: 8, marginRight: 16 }}>
+              <Text style={{ color: '#60A5FA' }}>Filter</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setFilters({}); }} style={{ padding: 8 }}>
+              <Text style={{ color: '#9CA3AF' }}>Clear Filters</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TransactionFilter
@@ -250,6 +261,85 @@ export default function BudgetOverview() {
           onClear={() => { setFilters({}); }}
           onApply={(f) => { setFilters(f); }}
         />
+
+        {/* Categories modal (opened by the new Categories button) */}
+        <Modal visible={categoriesModalVisible} transparent animationType="slide">
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: '#071012', padding: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '80%' }}>
+              <View style={{ paddingHorizontal: 8 }}>
+                <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Categories</Text>
+              </View>
+              <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 32 }}>
+                {/* Default categories (seeded list) */}
+                <Text style={{ color: '#9CA3AF', marginTop: 6, marginBottom: 6 }}>Default Categories</Text>
+                {(() => {
+                  const defaults = ['Food','Groceries','Rent','Utilities','Transportation','Entertainment','Travel','Gifts','Misc'];
+                  return defaults.map((dn) => {
+                    const found = categories.find((c: any) => String(c.name || '').toLowerCase() === dn.toLowerCase());
+                    const id = found ? (found.id || found._id) : dn;
+                    const checked = Boolean(selectedCategoryIds[String(id)] ?? true);
+                    return (
+                      <View key={`def-${dn}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
+                        <Text style={{ color: '#fff', fontSize: 16 }}>{dn}</Text>
+                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#10B981' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
+                          {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  });
+                })()}
+
+                {/* Custom categories */}
+                <Text style={{ color: '#9CA3AF', marginTop: 12, marginBottom: 6 }}>Custom Categories</Text>
+                {(() => {
+                  const defaultsSet = new Set(['food','groceries','rent','utilities','transportation','entertainment','travel','gifts','misc']);
+                  const custom = (categories || []).filter((c: any) => !defaultsSet.has(String(c.name || '').toLowerCase()));
+                  if (!custom.length) return <Text style={{ color: '#9CA3AF', marginTop: 12 }}>No custom categories</Text>;
+                  return custom.map((c: any) => {
+                    const id = c.id || c._id;
+                    const checked = Boolean(selectedCategoryIds[String(id)] ?? true);
+                    return (
+                      <View key={id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
+                        <Text style={{ color: '#fff', fontSize: 16 }}>{c.name}</Text>
+                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#10B981' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
+                          {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  });
+                })()}
+
+                <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}>
+                  <TextInput value={newCategoryInput} onChangeText={setNewCategoryInput} placeholder="Add new category" placeholderTextColor="#9CA3AF" style={{ flex: 1, backgroundColor: '#0b1518', padding: 12, borderRadius: 8, color: '#fff' }} />
+                  <TouchableOpacity onPress={async () => {
+                    const raw = String(newCategoryInput || '').trim();
+                    if (!raw) return;
+                    if (!profile?.id) { Alert.alert('Not signed in'); return; }
+                    try {
+                      const res = await categoryServiceWritable.createCategory(profile.id, { name: raw, type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
+                      try { emit('categories:changed'); } catch (e) { /* ignore */ }
+                      setNewCategoryInput('');
+                      // reload categories list
+                      const all = await categoryService.getCategories(profile.id);
+                      setCategories(Array.isArray(all.data) ? all.data : []);
+                    } catch (err) {
+                      console.error('Failed to create category from modal', err);
+                      Alert.alert('Create failed', (err as any)?.response?.data?.error || String(err));
+                    }
+                  }} style={{ marginLeft: 8, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#10B981', borderRadius: 8 }}>
+                    <Text style={{ color: '#072f15', fontWeight: '700' }}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ height: 16 }} />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                  <TouchableOpacity onPress={() => setCategoriesModalVisible(false)} style={{ padding: 10 }}>
+                    <Text style={{ color: '#9CA3AF' }}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         {/* Transactions list (separate widget) */}
   <TransactionsList transactions={visibleTransactions} onSelectTransaction={handleSelectTransaction} categories={categories} />

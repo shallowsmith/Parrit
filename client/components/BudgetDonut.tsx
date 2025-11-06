@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import Svg, { G, Path } from 'react-native-svg';
 import { pie, arc } from 'd3-shape';
-import { CATEGORY_COLORS, FALLBACK_COLORS, normalizeCategoryKey } from '@/constants/categoryColors';
+import { CATEGORY_COLORS, FALLBACK_COLORS, normalizeCategoryKey, getCategoryColor } from '@/constants/categoryColors';
 
 type Group = { key: string; label: string; total: number; txs: any[] };
 
@@ -24,17 +24,7 @@ export default function BudgetDonut({ grouped, selectedGroup, setSelectedGroup, 
                 return arcs.map((slice: any, i: number) => {
                   const path = arcGen(slice) || undefined;
                     const group = grouped[i];
-                    // Derive color: prefer category color if available, otherwise map by normalized key
-                    // Resolve color: prefer normalized category key from group, then server category color, then local mapping, then fallback palette
-                    let color: string | undefined;
-                    const key = normalizeCategoryKey(String(group.key || ''));
-                    if (key && CATEGORY_COLORS[key]) color = CATEGORY_COLORS[key];
-                    if (!color && categories && categories.length) {
-                      const found = categories.find((c: any) => String(c.id) === String(group.key) || String(c._id) === String(group.key) || normalizeCategoryKey(c.name) === key);
-                      if (found && found.color) color = found.color;
-                      if (!color && found) color = CATEGORY_COLORS[normalizeCategoryKey(found.name)];
-                    }
-                    if (!color) color = FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+                    const color = getCategoryColor(group.key, categories, i);
                   const isSelected = selectedGroup && selectedGroup.key === group.key;
                   const pathForRender = isSelected
                     ? arc<any>().outerRadius(radius + 8).innerRadius(inner - 4).cornerRadius(6)(slice)

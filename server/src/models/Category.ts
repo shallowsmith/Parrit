@@ -7,6 +7,7 @@ export interface Category {
     name: string,
     type: string,
     userId: string,
+  color?: string,
     createdAt?: Date;
     updatedAt?: Date;
 }
@@ -15,13 +16,16 @@ export interface Category {
 export const createCategorySchema = z.object({
   name: z.string().trim().min(1, 'Name is required'),
   type: z.string().trim().min(1, 'Type is required'),
-  userId: z.string().trim().min(1, 'User ID is required')
+  userId: z.string().trim().min(1, 'User ID is required'),
+  color: z.string().trim().optional()
 });
 
 // Zod schema for updating a category
 export const updateCategorySchema = z.object({
   name: z.string().trim().min(1, 'Name is required').optional(),
   type: z.string().trim().min(1, 'Type is required').optional()
+  ,
+  color: z.string().trim().optional()
 });
 
 export type CreateCategoryRequest = z.infer<typeof createCategorySchema>;
@@ -32,8 +36,10 @@ export interface CategoryResponse {
     name: string,
     type: string,
     userId: string
-    createdAt?: Date;
-    updatedAt?: Date;
+  ,
+  color?: string,
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export class CategoryValidationError extends Error {
@@ -77,6 +83,10 @@ export function toCategoryResponse(category: Category): CategoryResponse {
     name: category.name,
     type: category.type,
     userId: category.userId
+    ,
+    color: (category as any).color,
+    createdAt: category.createdAt,
+    updatedAt: category.updatedAt
   };
 
 }

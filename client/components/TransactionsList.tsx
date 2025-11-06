@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { CATEGORY_COLORS, FALLBACK_COLORS, normalizeCategoryKey } from '@/constants/categoryColors';
+import { CATEGORY_COLORS, FALLBACK_COLORS, normalizeCategoryKey, getCategoryColor } from '@/constants/categoryColors';
 
 export default function TransactionsList({ transactions, onSelectTransaction, categories = [] }: { transactions: any[]; onSelectTransaction?: (tx: any) => void; categories?: any[] }) {
   const [showPreviousDays, setShowPreviousDays] = useState(false);
@@ -32,7 +32,7 @@ export default function TransactionsList({ transactions, onSelectTransaction, ca
   const visibleKeys = useMemo(() => {
     if (showPreviousDays) return dateKeys;
     if (hasToday) return [todayKey];
-    // fallback: show the most recent day if today has no transactions
+    // Display the most recent day if today has no transactions
     return dateKeys.length ? [dateKeys[0]] : [];
   }, [showPreviousDays, dateKeys, hasToday, todayKey]);
 
@@ -51,24 +51,9 @@ export default function TransactionsList({ transactions, onSelectTransaction, ca
         <View key={dateKey} style={{ width: '100%', marginTop: 12 }}>
           <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 8 }}>{dateKey}</Text>
           {groups[dateKey].map((tx: any) => {
-            // Derive color from category mapping: prefer server-provided category color, then name-based mapping, then fallback
-            // Resolve a consistent color for this transaction's category
-            let color: string | undefined;
-            const keyFromTx = normalizeCategoryKey(String(tx.categoryId || ''));
-            if (keyFromTx && CATEGORY_COLORS[keyFromTx]) color = CATEGORY_COLORS[keyFromTx];
-            if (!color && categories && categories.length) {
-              const found = categories.find((c: any) => String(c.id) === String(tx.categoryId) || String(c._id) === String(tx.categoryId) || normalizeCategoryKey(c.name) === keyFromTx);
-              if (found && found.color) color = found.color;
-              if (!color && found) {
-                const norm = normalizeCategoryKey(found.name);
-                color = CATEGORY_COLORS[norm];
-              }
-            }
-            if (!color) {
-              // fallback by normalized tx vendor/id to pick a stable color from the palette
-              const idx = Math.abs(String(tx.id || tx._id || tx.vendorName || '').length) % FALLBACK_COLORS.length;
-              color = FALLBACK_COLORS[idx];
-            }
+            // Resolve color using shared helper so donut and list match
+            const seed = String(tx.id || tx._id || tx.vendorName || '');
+            const color = getCategoryColor(tx.categoryId || '', categories, undefined, seed);
             // If vendor is missing, show the category name as the vendor (more meaningful than 'Unknown')
             const foundCatForVendor = categories.find((c: any) => String(c.id) === String(tx.categoryId) || String(c._id) === String(tx.categoryId));
             const vendor = tx.vendorName || (foundCatForVendor ? capitalize(foundCatForVendor.name || '') : (tx.description || 'Unknown'));

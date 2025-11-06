@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, ViewStyle } from 'react-native';
+import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { AppColors } from '@/constants/theme';
 
 interface ButtonProps {
@@ -16,6 +16,7 @@ interface ButtonProps {
   disabled?: boolean;
   variant?: 'primary' | 'secondary';
   style?: ViewStyle;
+  textStyle?: TextStyle;
 }
 
 export function Button({
@@ -25,7 +26,8 @@ export function Button({
   disabled = false,
   variant = 'primary',
   style,
-}: ButtonProps) {
+  textStyle,
+}: Readonly<ButtonProps>) {
   const isDisabled = disabled || loading;
 
   return (
@@ -43,7 +45,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={AppColors.text} />
       ) : (
-        <Text style={styles.text}>{title}</Text>
+        <Text style={[styles.text, textStyle]}>{title}</Text>
       )}
     </TouchableOpacity>
   );

@@ -3,8 +3,9 @@ import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { CategoryService } from '../services/CategoryService';
 import { CategoryValidationError } from '../models/Category';
+import { authenticateToken, requireSameUser } from '../middleware/auth.middleware';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 const categoryService = new CategoryService();
 
@@ -32,7 +33,7 @@ const categoryService = new CategoryService();
  *               items:
  *                 $ref: '#/components/schemas/Category'
  */
-router.get("/", async (_req: Request, res: Response) => {
+router.get("/", authenticateToken, requireSameUser('userId'), async (_req: Request, res: Response) => {
   try {
     // Delegate business logic to service layer
     const categories = await categoryService.getAllCategories();
@@ -81,7 +82,7 @@ router.get("/", async (_req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Extract ID from URL parameter
     const category = await categoryService.getCategoryById(req.params.id);
@@ -159,7 +160,7 @@ router.get("/:id", async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Pass request body to service for validation and creation
     const category = await categoryService.createCategory(req.body);
@@ -242,7 +243,7 @@ router.post("/", async (req: Request, res: Response) => {
  * PUT /api/v1/users/:userId/categories/:id
  * Updates an existing category
  */
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Pass ID and request body to service for validation and update
     const category = await categoryService.updateCategory(req.params.id, req.body);

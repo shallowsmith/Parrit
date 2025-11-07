@@ -6,7 +6,39 @@ const options: swaggerJSDoc.Options = {
     info: {
       title: 'Parrit API',
       version: '1.0.0',
-      description: 'Voice Activated Finance Tracker API',
+      description: `Voice Activated Finance Tracker API
+
+## Authentication
+
+This API uses Firebase JWT tokens for authentication and authorization.
+
+### Getting a Token
+
+1. **Sign up/Login with Firebase** using email and password
+2. **Create a profile** using POST /api/v1/profiles with your JWT token
+3. **Refresh your token** to get the updated token with userId custom claim
+4. **Use the token** for all subsequent API requests
+
+### Using the Token
+
+Add the JWT token to the Authorization header:
+\`\`\`
+Authorization: Bearer <your-jwt-token>
+\`\`\`
+
+### Authorization Rules
+
+- Most endpoints require the \`userId\` custom claim in the JWT
+- The \`userId\` in the JWT must match the \`userId\` or \`id\` in the URL path
+- Profile creation is the exception - it only requires authentication (firebaseUid)
+
+### Testing with Swagger UI
+
+1. Click the "Authorize" button (🔒) at the top right
+2. Enter your JWT token in the format: \`Bearer <token>\`
+3. Click "Authorize"
+4. Test your endpoints!
+      `,
       contact: {
         name: 'Parrit Team',
       },
@@ -17,7 +49,20 @@ const options: swaggerJSDoc.Options = {
         description: 'Development server',
       },
     ],
+    security: [
+      {
+        BearerAuth: []
+      }
+    ],
     components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Firebase JWT token. Obtain by authenticating with Firebase. Use format: Bearer <token>'
+        }
+      },
       schemas: {
         Profile: {
           type: 'object',
@@ -28,6 +73,11 @@ const options: swaggerJSDoc.Options = {
               format: 'uuid',
               description: 'Unique identifier for the profile',
               example: '123e4567-e89b-12d3-a456-426614174000',
+            },
+            firebaseUid: {
+              type: 'string',
+              description: 'Firebase user ID from authentication',
+              example: 'abc123xyz789firebaseuid',
             },
             firstName: {
               type: 'string',
@@ -269,10 +319,25 @@ const options: swaggerJSDoc.Options = {
             },
           },
         },
+        UnauthorizedError: {
+          type: 'object',
+          properties: {
+            error: {
+              type: 'string',
+              description: 'Error message',
+              example: 'Unauthorized access',
+            },
+            message: {
+              type: 'string',
+              description: 'Additional context about the authorization failure',
+              example: 'Please complete profile creation to access this resource',
+            },
+          },
+        },
       },
     },
   },
-  apis: ['./src/routes/*.ts'],
+  apis: ['./src/routes/**/*.ts', './src/routes/*.ts'],
 };
 
 const specs = swaggerJSDoc(options);

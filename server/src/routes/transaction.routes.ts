@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { TransactionService } from '../services/TransactionService';
 import { TransactionValidationError } from '../models/Transaction';
+import { authenticateToken, requireSameUser } from '../middleware/auth.middleware';
 
 const router = Router({ mergeParams: true });
 
@@ -30,7 +31,7 @@ const transactionService = new TransactionService();
  *               items:
  *                 $ref: '#/components/schemas/Transaction'
  */
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Get userId from path parameter
     const userId = req.params.userId;
@@ -87,7 +88,7 @@ router.get("/", async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Extract ID from URL parameter
     const transaction = await transactionService.getTransactionById(req.params.id);
@@ -180,7 +181,7 @@ router.get("/:id", async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Pass request body to service for validation and creation
     const transaction = await transactionService.createTransaction(req.body);
@@ -273,7 +274,7 @@ router.post("/", async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Pass ID and request body to service for validation and update
     const transaction = await transactionService.updateTransaction(req.params.id, req.body);

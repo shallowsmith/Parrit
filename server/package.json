@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "firebase-login": "node scripts/firebase-login.js",
+    "firebase-signup": "node scripts/firebase-signup.js"
   },
   "dependencies": {
     "@google-cloud/vision": "^5.3.4",
@@ -13,9 +15,12 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "dotenv": "^17.2.3",
-    "express": "^4.21.2",
+    "express": "^4.19.2",
+    "firebase": "^12.4.0",
+    "firebase-admin": "^13.6.0",
     "mongodb": "^6.20.0",
     "multer": "^2.0.2",
+    "node-fetch": "^2.7.0",
     "openai": "^6.3.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
@@ -25,6 +30,7 @@
     "@types/express": "^4.17.23",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.18.10",
+    "@types/node-fetch": "^2.6.13",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.5",
     "typescript": "^5.6.3"

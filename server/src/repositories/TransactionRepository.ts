@@ -259,6 +259,147 @@ export class TransactionRepository {
         }
 
         /**
+         * Finds all transactions for a specific user within a date range.
+         * Used for spending history analysis.
+         *
+         * @param {string} userId - The user ID
+         * @param {Date} startDate - Start of date range (inclusive)
+         * @param {Date} endDate - End of date range (inclusive)
+         * @returns {Promise<Transaction[]>} Array of transactions within the date range
+         */
+        async findByUserIdAndDateRange(userId: string, startDate: Date, endDate: Date): Promise<Transaction[]> {
+            const collection = this.ensureCollection();
+            const transactions = await collection.find({
+                userId,
+                dateTime: {
+                    $gte: startDate,
+                    $lte: endDate
+                }
+            }).sort({ dateTime: -1 }).toArray();
+            return transactions;
+        }
+
+        /**
+         * Aggregates spending by category for a specific user within a date range.
+         * Returns total amount and transaction count per category.
+         *
+         * @param {string} userId - The user ID
+         * @param {Date} startDate - Start of date range (inclusive)
+         * @param {Date} endDate - End of date range (inclusive)
+         * @returns {Promise<Array>} Array of aggregated spending data per category
+         */
+        async aggregateByCategory(userId: string, startDate: Date, endDate: Date): Promise<Array<{
+            categoryId: string;
+            totalAmount: number;
+            transactionCount: number;
+        }>> {
+            const collection = this.ensureCollection();
+
+            const result = await collection.aggregate([
+                // Match transactions for the user within date range
+                {
+                    $match: {
+                        userId,
+                        dateTime: {
+                            $gte: startDate,
+                            $lte: endDate
+                        }
+                    }
+                },
+                // Group by category and calculate totals
+                {
+                    $group: {
+                        _id: '$categoryId',
+                        totalAmount: { $sum: '$amount' },
+                        transactionCount: { $count: {} }
+                    }
+                },
+                // Reshape the output
+                {
+                    $project: {
+                        _id: 0,
+                        categoryId: '$_id',
+                        totalAmount: 1,
+                        transactionCount: 1
+                    }
+                },
+                // Sort by total amount descending
+                {
+                    $sort: { totalAmount: -1 }
+                }
+            ]).toArray();
+
+            return result as Array<{
+                categoryId: string;
+                totalAmount: number;
+                transactionCount: number;
+            }>;
+        }
+
+        /**
+         * Aggregates spending by month for a specific user within a date range.
+         * Returns monthly totals sorted chronologically (oldest to newest).
+         *
+         * @param {string} userId - The user ID
+         * @param {Date} startDate - Start of date range (inclusive)
+         * @param {Date} endDate - End of date range (inclusive)
+         * @returns {Promise<Array>} Array of monthly spending data
+         */
+        async aggregateByMonth(userId: string, startDate: Date, endDate: Date): Promise<Array<{
+            year: number;
+            month: number;
+            totalAmount: number;
+            transactionCount: number;
+        }>> {
+            const collection = this.ensureCollection();
+
+            const result = await collection.aggregate([
+                // Match transactions for the user within date range
+                {
+                    $match: {
+                        userId,
+                        dateTime: {
+                            $gte: startDate,
+                            $lte: endDate
+                        }
+                    }
+                },
+                // Group by year and month
+                {
+                    $group: {
+                        _id: {
+                            year: { $year: '$dateTime' },
+                            month: { $month: '$dateTime' }
+                        },
+                        totalAmount: { $sum: '$amount' },
+                        transactionCount: { $count: {} }
+                    }
+                },
+                // Reshape the output
+                {
+                    $project: {
+                        _id: 0,
+                        year: '$_id.year',
+                        month: '$_id.month',
+                        totalAmount: 1,
+                        transactionCount: 1
+                    }
+                },
+                // Sort by year and month ascending (chronological order)
+                {
+                    $sort: { year: 1, month: 1 }
+                }
+            ]).toArray();
+
+            return result as Array<{
+                year: number;
+                month: number;
+                totalAmount: number;
+                transactionCount: number;
+            }>;
+        }
+
+        /**
          * Creates database indexes for optimized queries.
          * Should be called during application startup.
          *
@@ -267,6 +408,7 @@ export class TransactionRepository {
          * - categoryId: For fast category-specific queries
          * - dateTime: For date-based queries and sorting
          * - receiptId: For receipt-specific queries
+         * - userId + dateTime: Compound index for spending history queries
          */
         async createIndexes(): Promise<void> {
             const collection = this.ensureCollection();
@@ -282,6 +424,9 @@ export class TransactionRepository {
 
             // Index on receiptId for receipt-specific queries
             await collection.createIndex({ receiptId: 1 });
+
+            // Compound index on userId and dateTime for spending history queries
+            await collection.createIndex({ userId: 1, dateTime: -1 });
         }
 
 }

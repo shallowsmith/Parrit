@@ -21,6 +21,7 @@ import budgetRoutes from "./routes/budget.routes";
 import categoryRoutes from "./routes/category.routes";
 import transactionRoutes from "./routes/transaction.routes";
 import receiptRoutes from "./routes/receipt.routes";
+import spendingHistoryRoutes from "./routes/spendingHistory.routes";
 
 // Create Express application instance
 const app = express();
@@ -43,6 +44,9 @@ app.use("/api/v1/users/:id/budgets", budgetRoutes);
 app.use("/api/v1/users/:userId/categories", categoryRoutes);
 app.use("/api/v1/users/:userId/transactions", transactionRoutes);
 app.use("/api/v1/users/:userId/receipts", receiptRoutes);
+
+// Spending history routes (aggregated spending reports)
+app.use("/api/v1/users/:userId/spending", spendingHistoryRoutes);
 
 /**
  * Starts the application server.

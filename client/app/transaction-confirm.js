@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     View,
     Text,
@@ -9,21 +9,47 @@ import {
     Alert,
     ScrollView,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker"; // 👈 make sure this is installed
+import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
 
 export default function TransactionConfirm({ route, navigation }) {
     const { extractedData, backendURL, userId } = route.params;
 
+    // 🧠 Set AI-predicted category as default
     const [transaction, setTransaction] = useState({
         amount: extractedData?.total?.toString() || "",
         merchant: extractedData?.merchant || "",
         description: extractedData?.description || "",
-        category: extractedData?.category || "",
+        category: extractedData?.category || "", // <-- AI-suggested category
         date: extractedData?.date || "",
-        paymentType: "Card", // 👈 default value
+        paymentType: "Card",
         receiptImage: null,
     });
+
+    const [categories, setCategories] = useState([]);
+
+    // 🔹 Fetch categories from backend
+    useEffect(() => {
+        const fetchCategories = async () => {
+        try {
+            const res = await fetch(`${backendURL}/api/v1/users/${userId}/categories`);
+            const data = await res.json();
+
+            // If the AI category is not in list, add it
+            const catNames = data.map((c) => c.name);
+            if (transaction.category && !catNames.includes(transaction.category)) {
+            catNames.unshift(transaction.category + " (AI suggested)");
+            }
+
+            setCategories(catNames);
+        } catch (err) {
+            console.error("Failed to load categories:", err);
+            setCategories(["Uncategorized"]);
+        }
+        };
+
+        fetchCategories();
+    }, []);
 
     const handleInputChange = (key, value) => {
         setTransaction({ ...transaction, [key]: value });
@@ -45,9 +71,9 @@ export default function TransactionConfirm({ route, navigation }) {
             merchant: transaction.merchant,
             total: parseFloat(transaction.amount),
             description: transaction.description,
-            category: transaction.category,
+            category: transaction.category.replace(" (AI suggested)", ""),
             date: transaction.date,
-            paymentType: transaction.paymentType, // 👈 include payment type
+            paymentType: transaction.paymentType,
             receiptImage: transaction.receiptImage,
         };
 
@@ -59,11 +85,11 @@ export default function TransactionConfirm({ route, navigation }) {
 
         if (!res.ok) throw new Error("Failed to save transaction");
 
-        Alert.alert("Success", "Transaction saved successfully!");
+        Alert.alert("✅ Success", "Transaction saved successfully!");
         navigation.navigate("Transactions");
         } catch (err) {
         console.error(err);
-        Alert.alert("Error", err.message);
+        Alert.alert("❌ Error", err.message);
         }
     };
 
@@ -102,24 +128,31 @@ export default function TransactionConfirm({ route, navigation }) {
             onChangeText={(t) => handleInputChange("description", t)}
         />
 
-        {/* CATEGORY */}
+        {/* CATEGORY (AI suggested) */}
         <Text style={styles.label}>Category</Text>
-        <TextInput
-            style={styles.input}
-            placeholder="Enter category"
-            placeholderTextColor="#777"
-            value={transaction.category}
-            onChangeText={(t) => handleInputChange("category", t)}
-        />
+        <View style={styles.pickerContainer}>
+            <Picker
+            selectedValue={transaction.category}
+            onValueChange={(itemValue) => handleInputChange("category", itemValue)}
+            style={styles.picker}
+            dropdownIconColor="#fff"
+            >
+            {categories.length === 0 ? (
+                <Picker.Item label="Loading categories..." value="" />
+            ) : (
+                categories.map((cat, index) => (
+                <Picker.Item key={index} label={cat} value={cat} />
+                ))
+            )}
+            </Picker>
+        </View>
 
         {/* PAYMENT TYPE */}
         <Text style={styles.label}>Payment Type</Text>
         <View style={styles.pickerContainer}>
             <Picker
             selectedValue={transaction.paymentType}
-            onValueChange={(itemValue) =>
-                handleInputChange("paymentType", itemValue)
-            }
+            onValueChange={(itemValue) => handleInputChange("paymentType", itemValue)}
             style={styles.picker}
             dropdownIconColor="#fff"
             >
@@ -141,7 +174,7 @@ export default function TransactionConfirm({ route, navigation }) {
         {/* ATTACH RECEIPT */}
         <TouchableOpacity style={styles.attach} onPress={handleAttachReceipt}>
             <Image
-            source={require("../assets/attach-icon.png")}
+            source={require("../assets/images/attach_icon.png")}
             style={styles.icon}
             />
             <Text style={styles.attachText}>Attach Receipt</Text>

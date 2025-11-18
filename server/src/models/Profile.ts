@@ -17,6 +17,7 @@ export interface Profile {
   profileImage?: string | null;
   nickname?: string | null;
   status?: string | null;
+  googleRefreshToken?: string | null; // OAuth refresh token for Google Sheets export
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -76,6 +77,7 @@ export interface ProfileResponse {
   profileImage?: string | null;
   nickname?: string | null;
   status?: string | null;
+  googleRefreshToken?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

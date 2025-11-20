@@ -18,7 +18,7 @@ export interface Receipt {
 // Zod schema for creating a receipt
 export const createReceiptSchema = z.object({
   merchantName: z.string().trim().min(1, 'Merchant name is required'),
-  amount: z.number().positive('Amount must be positive'),
+  amount: z.number().nonnegative(),
   date: z.string().datetime('Invalid date format').or(z.date()),
   categoryId: z.string().trim().min(1, 'Category ID is required'),
   userId: z.string().trim().min(1, 'User ID is required'),
@@ -50,6 +50,9 @@ export interface ReceiptResponse {
     notes?: string;
     createdAt?: Date;
     updatedAt?: Date;
+
+    // 🧠 new field for AI category prediction
+    predictedCategory?: string;
 }
 
 export class ReceiptValidationError extends Error {

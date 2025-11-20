@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { ProfileService } from '../services/ProfileService';
 import { ProfileValidationError } from '../models/Profile';
-import { authenticateToken, requireSameUser } from '../middleware/auth.middleware.js';
+import { authenticateToken, requireSameUser } from '../middleware/auth.middleware';
 
 /**
  * Profile Routes - Presentation Layer

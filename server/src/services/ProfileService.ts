@@ -11,7 +11,7 @@ import type {
   UpdateProfileRequest,
   ProfileResponse
 } from '../models/Profile';
-import { setCustomUserClaims } from '../config/firebase-admin.js';
+import { setCustomUserClaims } from '../config/firebase-admin';
 import { z } from 'zod';
 
 /**

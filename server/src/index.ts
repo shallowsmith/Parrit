@@ -9,7 +9,7 @@
  * - Swagger documentation
  * - Graceful shutdown handling
  */
-
+import dotenv from "dotenv";
 import "dotenv/config";
 import express from "express";
 import swaggerUi from "swagger-ui-express";
@@ -27,6 +27,8 @@ import googleAuthRoutes from "./routes/googleAuth.routes";
 // Create Express application instance
 const app = express();
 const PORT = 3000;
+
+dotenv.config();
 
 // Express middleware
 app.use(express.json()); // Parse JSON request bodies

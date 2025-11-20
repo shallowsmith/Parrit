@@ -1,195 +1,219 @@
-import { ReceiptRepository } from '../repositories/ReceiptRepository';
-import {
-  ReceiptValidationError,
-  validateCreateReceiptRequest,
-  toReceiptResponse,
-  updateReceiptSchema
-} from '../models/Receipt';
-import type {
-  Receipt,
-  CreateReceiptRequest,
-  UpdateReceiptRequest,
-  ReceiptResponse
-} from '../models/Receipt';
-import { z } from 'zod';
+import { ImageAnnotatorClient } from "@google-cloud/vision";
+import fs from "fs";
+import path from "path";
+import fetch from "node-fetch";
+import admin from "../config/firebase-admin";
+import { v4 as uuidv4 } from "uuid";
+import { ReceiptValidationError } from "../models/Receipt";
 
-/**
- * Service class for Receipt business logic.
- *
- * Implements the Service Layer pattern to:
- * - Encapsulate business rules and validation
- * - Orchestrate repository operations
- * - Transform data between layers
- * - Handle business-specific errors
- *
- * This layer sits between routes (presentation) and repositories (data access),
- * ensuring separation of concerns and maintainability.
- *
- * @swagger
- * tags:
- *   name: Receipts
- *   description: Receipt management endpoints for tracking transactions and expenses
- */
+// Firestore reference
+const db = admin.firestore();
+const storage = admin.storage();
+const receiptsCollection = db.collection("receipts");
+
+interface ReceiptData {
+  userId: string;
+  merchantName: string;
+  amount: number;
+  date: Date;
+  category?: string;
+  imageUrl: string;
+  paymentType?: string;
+  notes?: string;
+}
+
 export class ReceiptService {
-  private receiptRepository: ReceiptRepository;
-
   constructor() {
-    // Initialize repository for data access
-    // In a larger app, this would be injected for better testability
-    this.receiptRepository = new ReceiptRepository();
+    console.log("✅ Firebase ReceiptService initialized");
   }
 
   /**
-     * Creates a new receipt with validation and business rules.
-     *
-     * Business logic includes:
-     * - Input validation and sanitization
-     * - Data transformation for response
-     *
-     * @param {any} receiptData - Raw receipt data from request
-     * @returns {Promise<ReceiptResponse>} Created receipt response
-     * @throws {ReceiptValidationError} If validation fails
-     */
-    async createReceipt(receiptData: any): Promise<ReceiptResponse> {
-      // Step 1: Validate and sanitize input data
-      const validatedData = validateCreateReceiptRequest(receiptData);
-
-      // Step 2: Persist to database
-      const createdReceipt = await this.receiptRepository.createReceipt(validatedData);
-
-      // Step 3: Transform to response format
-      return toReceiptResponse(createdReceipt);
+   * ===========================
+   * 🔹 CREATE RECEIPT
+   * ===========================
+   */
+  async createReceipt(receiptData: any) {
+    if (!receiptData.userId || !receiptData.merchantName || !receiptData.amount) {
+      throw new ReceiptValidationError("Missing required fields");
     }
 
-    /**
-       * Retrieves a receipt by ID.
-       *
-       * @param {string} id - The receipt ID
-       * @returns {Promise<ReceiptResponse | null>} Receipt or null if not found
-       * @throws {ReceiptValidationError} If ID is invalid
-       */
-      async getReceiptById(id: string): Promise<ReceiptResponse | null> {
-        // Validate ID format
-        if (!id || typeof id !== 'string') {
-          throw new ReceiptValidationError('Invalid receipt ID');
+    const docRef = receiptsCollection.doc();
+    await docRef.set({
+      ...receiptData,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const created = await docRef.get();
+    return { id: docRef.id, ...created.data() };
+  }
+
+  /**
+   * ===========================
+   * 🔹 GET RECEIPT BY ID
+   * ===========================
+   */
+  async getReceiptById(id: string) {
+    const doc = await receiptsCollection.doc(id).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  }
+
+  /**
+   * ===========================
+   * 🔹 GET ALL USER RECEIPTS
+   * ===========================
+   */
+  async getReceiptsByUserId(userId: string) {
+    const snapshot = await receiptsCollection.where("userId", "==", userId).get();
+    const receipts: any[] = [];
+    snapshot.forEach((doc) => receipts.push({ id: doc.id, ...doc.data() }));
+    return receipts;
+  }
+
+  /**
+   * ===========================
+   * 🔹 UPDATE RECEIPT
+   * ===========================
+   */
+  async updateReceipt(id: string, updateData: any) {
+    const docRef = receiptsCollection.doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return null;
+
+    await docRef.update({
+      ...updateData,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const updated = await docRef.get();
+    return { id: docRef.id, ...updated.data() };
+  }
+
+  /**
+   * ===========================
+   * 🔹 DELETE RECEIPT
+   * ===========================
+   */
+  async deleteReceipt(id: string): Promise<boolean> {
+    const docRef = receiptsCollection.doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return false;
+
+    await docRef.delete();
+    return true;
+  }
+
+  /**
+   * ===========================
+   * 🔹 PROCESS RECEIPT IMAGE
+   * ===========================
+   * Steps:
+   * 1. OCR → Google Vision
+   * 2. Categorize → Hugging Face
+   * 3. Upload image → Firebase Storage
+   * 4. Save metadata → Firestore
+   */
+  async processReceipt(userId: string, filePath: string) {
+    try {
+      const visionClient = new ImageAnnotatorClient({
+        keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      });
+
+      // Step 1: Extract text
+      const [result] = await visionClient.textDetection(filePath);
+      const detections = result.textAnnotations;
+      const fullText = detections?.[0]?.description || "";
+      console.log("🧾 OCR Extracted Text:", fullText.slice(0, 150));
+
+      // Step 2: Parse simple data from text
+      const merchant = this.extractMerchant(fullText);
+      const total = this.extractTotal(fullText);
+      const date = this.extractDate(fullText);
+
+      // Step 3: Predict category using Hugging Face
+      const hfResponse = await fetch(
+        "https://api-inference.huggingface.co/models/kuro-08/bert-transaction-categorization",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputs: `Transaction: Payment at ${merchant} for ${total}`,
+          }),
         }
+      );
 
-        const receipt = await this.receiptRepository.findReceiptById(id);
-
-        if (!receipt) {
-          return null;
-        }
-
-        return toReceiptResponse(receipt);
+      let hfData: any;
+      try {
+        hfData = await hfResponse.json();
+      } catch {
+        hfData = [];
       }
 
-      /**
-         * Retrieves all receipts.
-         *
-         * @returns {Promise<ReceiptResponse[]>} Array of all receipts
-         */
-        async getAllReceipts(): Promise<ReceiptResponse[]> {
-          const receipts = await this.receiptRepository.findAllReceipts();
-          return receipts.map(receipt => toReceiptResponse(receipt));
-        }
+      const category =
+        (Array.isArray(hfData)
+          ? (hfData[0]?.label || hfData?.[0]?.[0]?.label)
+          : "Uncategorized") || "Uncategorized";
 
-        /**
-         * Retrieves all receipts for a specific user.
-         *
-         * @param {string} userId - The user ID
-         * @returns {Promise<ReceiptResponse[]>} Array of user's receipts
-         */
-        async getReceiptsByUserId(userId: string): Promise<ReceiptResponse[]> {
-          if (!userId || typeof userId !== 'string') {
-            throw new ReceiptValidationError('Invalid user ID');
-          }
+      // Step 4: Upload receipt image to Firebase Storage
+      const bucket = storage.bucket();
+      const fileName = `receipts/${userId}/${uuidv4()}${path.extname(filePath)}`;
+      const [uploadedFile] = await bucket.upload(filePath, {
+        destination: fileName,
+        metadata: {
+          metadata: {
+            firebaseStorageDownloadTokens: uuidv4(),
+          },
+        },
+      });
 
-          const receipts = await this.receiptRepository.findByUserId(userId);
-          return receipts.map(receipt => toReceiptResponse(receipt));
-        }
+      const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
+        uploadedFile.name
+      )}?alt=media`;
 
-        /**
-         * Retrieves all receipts for a specific category.
-         *
-         * @param {string} categoryId - The category ID
-         * @returns {Promise<ReceiptResponse[]>} Array of category's receipts
-         */
-        async getReceiptsByCategoryId(categoryId: string): Promise<ReceiptResponse[]> {
-          if (!categoryId || typeof categoryId !== 'string') {
-            throw new ReceiptValidationError('Invalid category ID');
-          }
+      // Step 5: Remove local temp file
+      fs.unlinkSync(filePath);
 
-          const receipts = await this.receiptRepository.findByCategoryId(categoryId);
-          return receipts.map(receipt => toReceiptResponse(receipt));
-        }
+      // Step 6: Save receipt in Firestore
+      const receiptData: ReceiptData = {
+        userId,
+        merchantName: merchant || "Unknown Merchant",
+        amount: total || 0,
+        date: date || new Date(),
+        category,
+        imageUrl,
+        paymentType: "Card",
+        notes: "Auto-extracted from receipt image",
+      };
 
-    /**
-       * Updates an existing receipt with validation.
-       *
-       * Supports partial updates - only provided fields are updated.
-       *
-       * @param {string} id - The receipt ID to update
-       * @param {any} updateData - Partial receipt data to update
-       * @returns {Promise<ReceiptResponse | null>} Updated receipt or null
-       * @throws {ReceiptValidationError} If validation fails
-       */
-      async updateReceipt(id: string, updateData: any): Promise<ReceiptResponse | null> {
-        // Validate ID
-        if (!id || typeof id !== 'string') {
-          throw new ReceiptValidationError('Invalid receipt ID');
-        }
+      const docRef = receiptsCollection.doc();
+      await docRef.set({
+        ...receiptData,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-        // Check if receipt exists
-        const existingReceipt = await this.receiptRepository.findReceiptById(id);
-        if (!existingReceipt) {
-          return null;
-        }
+      return { success: true, id: docRef.id, data: receiptData };
+    } catch (error) {
+      console.error("❌ Receipt processing failed:", error);
+      throw new Error("Failed to process and save receipt");
+    }
+  }
 
-        // Validate update data using Zod schema
-        let validatedData: Partial<UpdateReceiptRequest>;
-        try {
-          validatedData = updateReceiptSchema.parse(updateData);
-        } catch (error) {
-          if (error instanceof z.ZodError) {
-            const message = error.issues[0]?.message || 'Validation failed';
-            throw new ReceiptValidationError(
-              message,
-              error.issues[0]?.path[0]?.toString()
-            );
-          }
-          throw error;
-        }
+  // --- 🔹 Helper Methods ---
+  private extractMerchant(text: string): string {
+    const lines = text.split("\n").map((l) => l.trim());
+    return lines[0] || "Unknown Merchant";
+  }
 
-        // Update receipt in database
-        const updatedReceipt = await this.receiptRepository.updateReceipt(id, validatedData);
+  private extractTotal(text: string): number {
+    const match = text.match(/\$?\s?(\d+\.\d{2})/);
+    return match ? parseFloat(match[1]) : 0;
+  }
 
-        if (!updatedReceipt) {
-          return null;
-        }
-
-        return toReceiptResponse(updatedReceipt);
-      }
-
-    /**
-       * Deletes a receipt by ID.
-       *
-       * @param {string} id - The receipt ID to delete
-       * @returns {Promise<boolean>} True if deleted, false if not found
-       * @throws {ReceiptValidationError} If ID is invalid
-       */
-      async deleteReceipt(id: string): Promise<boolean> {
-        if (!id || typeof id !== 'string') {
-          throw new ReceiptValidationError('Invalid receipt ID');
-        }
-
-        return await this.receiptRepository.deleteReceipt(id);
-      }
-
-      /**
-       * Initializes database indexes.
-       * Should be called during application startup.
-       */
-      async initializeIndexes(): Promise<void> {
-        await this.receiptRepository.createIndexes();
-      }
+  private extractDate(text: string): Date | null {
+    const match = text.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
+    return match ? new Date(match[1]) : null;
+  }
 }

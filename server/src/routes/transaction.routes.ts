@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { TransactionService } from '../services/TransactionService';
 import { TransactionValidationError } from '../models/Transaction';
-import { authenticateToken, requireSameUser } from '../middleware/auth.middleware.js';
+import { authenticateToken, requireSameUser } from '../middleware/auth.middleware';
 
 const router = Router({ mergeParams: true });
 

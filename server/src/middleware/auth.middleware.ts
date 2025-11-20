@@ -7,7 +7,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { verifyIdToken } from '../config/firebase-admin.js';
+import { verifyIdToken } from '../config/firebase-admin';
 import type { JWTPayload } from '../types/express.js';
 
 /**

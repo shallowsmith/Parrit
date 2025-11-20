@@ -142,7 +142,7 @@ export default function LoginScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => router.push('/(auth)/register')}
+            onPress={() => router.push('/register')}
             style={styles.signupLink}
           >
             <Text style={styles.signupText}>

@@ -12,7 +12,9 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import "react-native-reanimated";
-
+import { View, Text, SafeAreaView } from 'react-native';
+import { AppColors } from "@/constants/theme";
+import VoiceRecorder from "@/components/VoiceTransactionWidget";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
@@ -77,7 +79,7 @@ export default function RootLayout() {
         <View style={{ flex: 1, backgroundColor: AppColors.background }}>
             <RootLayoutNav />
             {/* Mount the voice recorder at the app root so it can be used from any tab via the global event */}
-            <VoiceRecorder />
+            <VoiceRecorder/>
           <StatusBar style="light" />
         </View>
       </ThemeProvider>

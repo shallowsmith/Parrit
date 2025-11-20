@@ -22,6 +22,7 @@ import categoryRoutes from "./routes/category.routes";
 import transactionRoutes from "./routes/transaction.routes";
 import receiptRoutes from "./routes/receipt.routes";
 import spendingHistoryRoutes from "./routes/spendingHistory.routes";
+import googleAuthRoutes from "./routes/googleAuth.routes";
 import huggingfaceRoutes from "./routes/huggingface.routes";
 
 // Create Express application instance
@@ -46,6 +47,11 @@ app.use("/api/v1/users/:userId/receipts", receiptRoutes);
 
 // Spending history routes (aggregated spending reports)
 app.use("/api/v1/users/:userId/spending", spendingHistoryRoutes);
+
+// Google OAuth routes for Google Sheets export
+app.use("/api/v1/users/:userId/google", googleAuthRoutes);
+// Static OAuth callback route (matches Google Cloud Console redirect URI)
+app.use("/api/v1", googleAuthRoutes);
 app.use("/api/v1/inference", huggingfaceRoutes);
 
 /**

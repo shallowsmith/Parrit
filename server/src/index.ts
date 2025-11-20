@@ -9,7 +9,7 @@
  * - Swagger documentation
  * - Graceful shutdown handling
  */
-
+import dotenv from "dotenv";
 import "dotenv/config";
 import express from "express";
 import swaggerUi from "swagger-ui-express";
@@ -21,10 +21,14 @@ import budgetRoutes from "./routes/budget.routes";
 import categoryRoutes from "./routes/category.routes";
 import transactionRoutes from "./routes/transaction.routes";
 import receiptRoutes from "./routes/receipt.routes";
+import spendingHistoryRoutes from "./routes/spendingHistory.routes";
+import googleAuthRoutes from "./routes/googleAuth.routes";
 
 // Create Express application instance
 const app = express();
 const PORT = 3000;
+
+dotenv.config();
 
 // Express middleware
 app.use(express.json()); // Parse JSON request bodies
@@ -41,6 +45,14 @@ app.use("/api/v1/users/:id/budgets", budgetRoutes);
 app.use("/api/v1/users/:userId/categories", categoryRoutes);
 app.use("/api/v1/users/:userId/transactions", transactionRoutes);
 app.use("/api/v1/users/:userId/receipts", receiptRoutes);
+
+// Spending history routes (aggregated spending reports)
+app.use("/api/v1/users/:userId/spending", spendingHistoryRoutes);
+
+// Google OAuth routes for Google Sheets export
+app.use("/api/v1/users/:userId/google", googleAuthRoutes);
+// Static OAuth callback route (matches Google Cloud Console redirect URI)
+app.use("/api/v1", googleAuthRoutes);
 
 /**
  * Starts the application server.

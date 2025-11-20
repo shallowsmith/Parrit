@@ -2,28 +2,50 @@
   "name": "parrit",
   "version": "1.0.0",
   "main": "dist/index.js",
-  "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "firebase-login": "node scripts/firebase-login.js",
+    "firebase-signup": "node scripts/firebase-signup.js",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:watch": "vitest watch"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
     "@types/mongodb": "^4.0.6",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
+    "firebase": "^12.4.0",
+    "firebase-admin": "^13.6.0",
+    "googleapis": "^166.0.0",
     "mongodb": "^6.20.0",
+    "multer": "^2.0.2",
+    "node-fetch": "^2.7.0",
+    "openai": "^6.3.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "zod": "^4.1.11"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.7.5",
+    "@types/express": "^4.17.23",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.18.10",
+    "@types/node-fetch": "^2.6.13",
+    "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^3.2.4",
+    "mongodb-memory-server": "^10.3.0",
+    "supertest": "^7.1.4",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.5",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }

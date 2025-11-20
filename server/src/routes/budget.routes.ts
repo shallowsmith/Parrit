@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { BudgetService } from '../services/BudgetService';
 import { BudgetValidationError } from '../models/Budget';
+import { authenticateToken, requireSameUser } from '../middleware/auth.middleware';
 
 const router = Router({ mergeParams: true });
 
@@ -12,14 +13,17 @@ const budgetService = new BudgetService();
  * /api/v1/users/{userId}/budgets:
  *   get:
  *     summary: Get all budgets for a user
+ *     description: Requires authentication and authorization - userId in JWT must match userId in URL
  *     tags: [Budgets]
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID (MongoDB ObjectId)
+ *         description: User ID (must match userId in JWT custom claim)
  *     responses:
  *       200:
  *         description: List of user's budgets
@@ -29,8 +33,14 @@ const budgetService = new BudgetService();
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Budget'
+ *       401:
+ *         description: Unauthorized - Missing token, invalid token, or userId mismatch
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UnauthorizedError'
  */
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
   try {
     // Get userId from path parameter
     const userId = req.params.id;
@@ -59,14 +69,17 @@ router.get("/", async (req: Request, res: Response) => {
  * /api/v1/users/{userId}/budgets/{id}:
  *   get:
  *     summary: Get a budget by ID
+ *     description: Requires authentication and authorization - userId in JWT must match userId in URL
  *     tags: [Budgets]
+ *     security:
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID (MongoDB ObjectId)
+ *         description: User ID (must match userId in JWT custom claim)
  *       - in: path
  *         name: id
  *         required: true
@@ -80,6 +93,12 @@ router.get("/", async (req: Request, res: Response) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Budget'
+ *       401:
+ *         description: Unauthorized - Missing token, invalid token, or userId mismatch
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UnauthorizedError'
  *       404:
  *         description: Budget not found
  *         content:
@@ -87,7 +106,7 @@ router.get("/", async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
   try {
     // Extract ID from URL parameter
     const budget = await budgetService.getBudgetById(req.params.id);
@@ -178,7 +197,7 @@ router.get("/:id", async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
   try {
     // Pass request body to service for validation and creation
     const budget = await budgetService.createBudget(req.body);
@@ -268,7 +287,7 @@ router.post("/", async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
   try {
     // Pass ID and request body to service for validation and update
     const budget = await budgetService.updateBudget(req.params.id, req.body);

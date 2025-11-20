@@ -1,11 +1,20 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { ReceiptService } from '../services/ReceiptService';
-import { ReceiptValidationError } from '../models/Receipt';
+import multer from "multer";
+import { ReceiptService } from "../services/ReceiptService";
+import { ReceiptValidationError } from "../models/Receipt";
+import { authenticateToken, requireSameUser } from "../middleware/auth.middleware";
 
+const upload = multer({ dest: "uploads/" });
 const router = Router({ mergeParams: true });
-
 const receiptService = new ReceiptService();
+
+/**
+ * @swagger
+ * tags:
+ *   name: Receipts
+ *   description: API endpoints for managing receipts (Firebase integration)
+ */
 
 /**
  * @swagger
@@ -19,7 +28,7 @@ const receiptService = new ReceiptService();
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID (MongoDB ObjectId)
+ *         description: Firebase user ID
  *     responses:
  *       200:
  *         description: List of user's receipts
@@ -30,27 +39,17 @@ const receiptService = new ReceiptService();
  *               items:
  *                 $ref: '#/components/schemas/Receipt'
  */
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requireSameUser("userId"), async (req: Request, res: Response) => {
   try {
-    // Get userId from path parameter
     const userId = req.params.userId;
-
-    // Delegate business logic to service layer
     const receipts = await receiptService.getReceiptsByUserId(userId);
-
-    // Return successful response with data
     res.json(receipts);
   } catch (error) {
-    // Log error for debugging (in production, use proper logging)
-    console.error('Error fetching receipts:', error);
-
-    // Handle validation errors (bad request format)
+    console.error("Error fetching receipts:", error);
     if (error instanceof ReceiptValidationError) {
       return res.status(400).json({ error: error.message });
     }
-
-    // Return generic error to client
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -58,7 +57,7 @@ router.get("/", async (req: Request, res: Response) => {
  * @swagger
  * /api/v1/users/{userId}/receipts/{id}:
  *   get:
- *     summary: Get a receipt by ID
+ *     summary: Get a single receipt by ID
  *     tags: [Receipts]
  *     parameters:
  *       - in: path
@@ -66,13 +65,13 @@ router.get("/", async (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID (MongoDB ObjectId)
+ *         description: Firebase user ID
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: Receipt ID (MongoDB ObjectId)
+ *         description: Receipt document ID
  *     responses:
  *       200:
  *         description: Receipt found
@@ -82,33 +81,15 @@ router.get("/", async (req: Request, res: Response) => {
  *               $ref: '#/components/schemas/Receipt'
  *       404:
  *         description: Receipt not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", authenticateToken, requireSameUser("userId"), async (req: Request, res: Response) => {
   try {
-    // Extract ID from URL parameter
     const receipt = await receiptService.getReceiptById(req.params.id);
-
-    // Check if receipt exists
-    if (!receipt) {
-      return res.status(404).json({ error: "Receipt not found" });
-    }
-
-    // Return found receipt
+    if (!receipt) return res.status(404).json({ error: "Receipt not found" });
     res.json(receipt);
   } catch (error) {
-    console.error('Error fetching receipt:', error);
-
-    // Handle validation errors (bad request format)
-    if (error instanceof ReceiptValidationError) {
-      return res.status(400).json({ error: error.message });
-    }
-
-    // Handle unexpected errors
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error fetching receipt:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -124,79 +105,23 @@ router.get("/:id", async (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID (MongoDB ObjectId)
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - merchantName
- *               - amount
- *               - date
- *               - categoryId
- *               - userId
- *             properties:
- *               merchantName:
- *                 type: string
- *                 example: "Whole Foods Market"
- *               amount:
- *                 type: number
- *                 format: double
- *                 example: 45.67
- *               date:
- *                 type: string
- *                 format: date-time
- *                 example: "2025-10-06T14:30:00Z"
- *               categoryId:
- *                 type: string
- *                 example: "507f1f77bcf86cd799439012"
- *               userId:
- *                 type: string
- *                 example: "68df4cd8f4c53b419fc5f196"
- *               imageUrl:
- *                 type: string
- *                 format: uri
- *                 example: "https://example.com/receipts/image.jpg"
- *               notes:
- *                 type: string
- *                 example: "Business lunch with client"
+ *             $ref: '#/components/schemas/Receipt'
  *     responses:
  *       201:
  *         description: Receipt created successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Receipt'
- *       400:
- *         description: Missing required fields
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", authenticateToken, requireSameUser("userId"), async (req: Request, res: Response) => {
   try {
-    // Pass request body to service for validation and creation
     const receipt = await receiptService.createReceipt(req.body);
-
-    // Return created receipt with 201 status
     res.status(201).json(receipt);
-  } catch (error) {
-    console.error('Error creating receipt:', error);
-
-    // Handle business logic and validation errors
-    if (error instanceof ReceiptValidationError) {
-      return res.status(400).json({
-        error: error.message,
-        field: error.field,
-        missing: error.missingFields
-      });
-    }
-
-    // Handle unexpected errors
-    res.status(500).json({ error: 'Internal server error' });
+  } catch (error: any) {
+    console.error("Error creating receipt:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -212,86 +137,103 @@ router.post("/", async (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID (MongoDB ObjectId)
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: Receipt ID (MongoDB ObjectId)
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               merchantName:
- *                 type: string
- *                 example: "Whole Foods Market"
- *               amount:
- *                 type: number
- *                 format: double
- *                 example: 45.67
- *               date:
- *                 type: string
- *                 format: date-time
- *                 example: "2025-10-06T14:30:00Z"
- *               categoryId:
- *                 type: string
- *                 example: "507f1f77bcf86cd799439012"
- *               imageUrl:
- *                 type: string
- *                 format: uri
- *                 example: "https://example.com/receipts/image.jpg"
- *               notes:
- *                 type: string
- *                 example: "Business lunch with client"
+ *             $ref: '#/components/schemas/Receipt'
  *     responses:
  *       200:
  *         description: Receipt updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Receipt'
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  *       404:
  *         description: Receipt not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", authenticateToken, requireSameUser("userId"), async (req: Request, res: Response) => {
   try {
-    // Pass ID and request body to service for validation and update
     const receipt = await receiptService.updateReceipt(req.params.id, req.body);
-
-    // Check if receipt exists
-    if (!receipt) {
-      return res.status(404).json({ error: "Receipt not found" });
-    }
-
-    // Return updated receipt
+    if (!receipt) return res.status(404).json({ error: "Receipt not found" });
     res.json(receipt);
   } catch (error) {
-    console.error('Error updating receipt:', error);
+    console.error("Error updating receipt:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
-    // Handle business logic and validation errors
-    if (error instanceof ReceiptValidationError) {
-      return res.status(400).json({
-        error: error.message,
-        field: error.field
-      });
-    }
+/**
+ * @swagger
+ * /api/v1/users/{userId}/receipts/scan:
+ *   post:
+ *     summary: Upload a receipt image and extract structured data
+ *     tags: [Receipts]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Extracted receipt data
+ */
+router.post("/scan", upload.single("file"), async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId;
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const result = await receiptService.processReceipt(userId, req.file.path);
+    res.status(200).json(result);
+  } catch (error: any) {
+    console.error("Error scanning receipt:", error);
+    res.status(500).json({ error: error.message || "Internal server error" });
+  }
+});
 
-    // Handle unexpected errors
-    res.status(500).json({ error: 'Internal server error' });
+/**
+ * @swagger
+ * /api/v1/users/{userId}/receipts/{id}:
+ *   delete:
+ *     summary: Delete a receipt
+ *     tags: [Receipts]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       204:
+ *         description: Receipt deleted successfully
+ *       404:
+ *         description: Receipt not found
+ */
+router.delete("/:id", authenticateToken, requireSameUser("userId"), async (req: Request, res: Response) => {
+  try {
+    const success = await receiptService.deleteReceipt(req.params.id);
+    if (!success) return res.status(404).json({ error: "Receipt not found" });
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting receipt:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

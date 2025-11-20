@@ -47,7 +47,7 @@ export class ProfileRepository {
    * @returns {Promise<Profile>} The created profile with generated ID
    * @throws {Error} If profile creation fails
    */
-  async createProfile(profileData: CreateProfileRequest): Promise<Profile> {
+  async createProfile(profileData: CreateProfileRequest & { firebaseUid: string }): Promise<Profile> {
     const collection = this.ensureCollection();
     // Add timestamps for audit trail
     const now = new Date();
@@ -137,6 +137,38 @@ export class ProfileRepository {
     const result: UpdateResult = await collection.updateOne(
       { _id: new ObjectId(id) },
       { $set: updatePayload }
+    );
+
+    if (result.matchedCount === 0) {
+      return null;
+    }
+
+    return await this.findProfileById(id);
+  }
+
+  /**
+   * Updates the Google refresh token for a profile.
+   * Used for OAuth token persistence.
+   *
+   * @param {string} id - The profile ID
+   * @param {string} refreshToken - The Google OAuth refresh token
+   * @returns {Promise<Profile | null>} Updated profile or null if not found
+   */
+  async updateGoogleRefreshToken(id: string, refreshToken: string): Promise<Profile | null> {
+    if (!ObjectId.isValid(id)) {
+      return null;
+    }
+
+    const collection = this.ensureCollection();
+
+    const result: UpdateResult = await collection.updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          googleRefreshToken: refreshToken,
+          updatedAt: new Date(),
+        } 
+      }
     );
 
     if (result.matchedCount === 0) {

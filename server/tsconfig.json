@@ -1,13 +1,13 @@
 {
-  // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     "target": "ES2020",
-      "module": "ESNext",
-      "moduleResolution": "Bundler",
-      "esModuleInterop": true,
-      "strict": true,
-      "outDir": "dist"
-    },
-    "include": ["src"]
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "strict": true,
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"]
 }
 

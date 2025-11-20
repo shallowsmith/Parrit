@@ -8,6 +8,7 @@ import { z } from 'zod';
 export interface Profile {
   _id?: ObjectId;
   id?: string;
+  firebaseUid: string;        // Firebase user ID (extracted from JWT)
   firstName: string;
   lastName: string;
   birthday: string;           // mm/dd format
@@ -16,6 +17,7 @@ export interface Profile {
   profileImage?: string | null;
   nickname?: string | null;
   status?: string | null;
+  googleRefreshToken?: string | null; // OAuth refresh token for Google Sheets export
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -66,6 +68,7 @@ export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
  */
 export interface ProfileResponse {
   id: string;
+  firebaseUid: string;
   firstName: string;
   lastName: string;
   birthday: string;
@@ -74,6 +77,7 @@ export interface ProfileResponse {
   profileImage?: string | null;
   nickname?: string | null;
   status?: string | null;
+  googleRefreshToken?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -131,6 +135,7 @@ export function validateCreateProfileRequest(data: any): CreateProfileRequest {
 export function toProfileResponse(profile: Profile): ProfileResponse {
   return {
     id: profile._id?.toString() || profile.id || '',
+    firebaseUid: profile.firebaseUid,
     firstName: profile.firstName,
     lastName: profile.lastName,
     birthday: profile.birthday,

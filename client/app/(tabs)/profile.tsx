@@ -14,11 +14,13 @@ import { SpendingHistoryChart } from '@/components/profile/SpendingHistoryChart'
 import { SettingsSection } from '@/components/profile/SettingsSection';
 import { EditProfileModal } from '@/components/profile/EditProfileModal';
 import { Profile } from '@/types/auth.types';
+import { useGoogleSheetsExport } from '@/hooks/useGoogleSheetsExport';
 
 export default function ProfileScreen() {
   const { user, profile, logout, updateProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const { exportToGoogleSheets, exporting } = useGoogleSheetsExport();
 
   const handleSaveProfile = async (updatedProfile: Partial<Profile>) => {
     await updateProfile(updatedProfile);
@@ -47,6 +49,14 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleExportToGoogleSheets = () => {
+    if (!profile?.id) {
+      Alert.alert('Error', 'No profile found. Please log in again.');
+      return;
+    }
+    exportToGoogleSheets(profile.id);
   };
 
   return (
@@ -78,6 +88,17 @@ export default function ProfileScreen() {
         variant="primary"
         style={styles.viewReceiptsButton}
         textStyle={styles.viewReceiptsButtonText}
+      />
+
+      {/* Export to Google Sheets Button */}
+      <Button
+        title="Export to Google Sheets"
+        onPress={handleExportToGoogleSheets}
+        variant="primary"
+        loading={exporting}
+        disabled={exporting}
+        style={styles.exportButton}
+        textStyle={styles.exportButtonText}
       />
 
       {/* Settings Options */}
@@ -129,7 +150,7 @@ const styles = StyleSheet.create({
     color: AppColors.text,
   },
   viewReceiptsButton: {
-    marginBottom: 30,
+    marginBottom: 20,
     marginTop: 12,
     marginHorizontal: 50,
     paddingVertical: 12,
@@ -137,6 +158,18 @@ const styles = StyleSheet.create({
     minHeight: 45,
   },
   viewReceiptsButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  exportButton: {
+    marginBottom: 30,
+    marginTop: 8,
+    marginHorizontal: 50,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 45,
+  },
+  exportButtonText: {
     fontSize: 14,
     fontWeight: '500',
   },

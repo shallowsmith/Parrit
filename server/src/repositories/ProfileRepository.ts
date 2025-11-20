@@ -147,6 +147,38 @@ export class ProfileRepository {
   }
 
   /**
+   * Updates the Google refresh token for a profile.
+   * Used for OAuth token persistence.
+   *
+   * @param {string} id - The profile ID
+   * @param {string} refreshToken - The Google OAuth refresh token
+   * @returns {Promise<Profile | null>} Updated profile or null if not found
+   */
+  async updateGoogleRefreshToken(id: string, refreshToken: string): Promise<Profile | null> {
+    if (!ObjectId.isValid(id)) {
+      return null;
+    }
+
+    const collection = this.ensureCollection();
+
+    const result: UpdateResult = await collection.updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          googleRefreshToken: refreshToken,
+          updatedAt: new Date(),
+        } 
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return null;
+    }
+
+    return await this.findProfileById(id);
+  }
+
+  /**
    * Deletes a profile from the database.
    *
    * @param {string} id - The profile ID to delete

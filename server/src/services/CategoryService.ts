@@ -32,6 +32,7 @@ import { z } from 'zod';
  */
 export class CategoryService {
   private categoryRepository: CategoryRepository;
+  private transactionRepository: any;
 
   constructor() {
     // Initialize repository for data access
@@ -66,6 +67,43 @@ export class CategoryService {
 
       // Step 4: Transform to response format
       return toCategoryResponse(createdCategory);
+    }
+
+    /**
+     * Merge duplicate categories for a user by name (case-insensitive).
+     * For each set of duplicates, pick the first as canonical, reassign transactions
+     * from duplicates to the canonical category, then remove the duplicates.
+     * Returns an array of merge results.
+     */
+    async dedupeCategoriesForUser(userId: string): Promise<Array<{ keepId: string; removedId: string; movedTransactions: number }>> {
+      if (!userId) throw new CategoryValidationError('Invalid userId');
+      // lazy require to avoid circular deps
+      const { TransactionRepository } = await import('../repositories/TransactionRepository');
+      const txRepo = new TransactionRepository();
+      const cats = await this.categoryRepository.findByUserId(userId);
+      const groups: Record<string, any[]> = {};
+      cats.forEach(c => {
+        const key = String(c.name || '').toLowerCase().trim();
+        if (!key) return;
+        groups[key] = groups[key] || [];
+        groups[key].push(c);
+      });
+
+      const results: Array<{ keepId: string; removedId: string; movedTransactions: number }> = [];
+      for (const key of Object.keys(groups)) {
+        const arr = groups[key];
+        if (arr.length <= 1) continue;
+        const canonical = arr[0];
+        for (let i = 1; i < arr.length; i++) {
+          const dup = arr[i];
+          // move transactions
+          const moved = await txRepo.updateCategoryIdForUser(userId, dup._id?.toString() || dup.id, canonical._id?.toString() || canonical.id);
+          // delete duplicate category
+          await this.categoryRepository.deleteCategory(dup._id?.toString() || dup.id);
+          results.push({ keepId: canonical._id?.toString() || canonical.id, removedId: dup._id?.toString() || dup.id, movedTransactions: moved });
+        }
+      }
+      return results;
     }
 
     /**

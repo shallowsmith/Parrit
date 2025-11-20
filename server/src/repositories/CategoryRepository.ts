@@ -149,6 +149,16 @@ export class CategoryRepository {
         }
 
         /**
+         * Find all categories for a specific user.
+         * @param userId
+         */
+        async findByUserId(userId: string): Promise<Category[]> {
+          const collection = this.ensureCollection();
+          const categories = await collection.find({ userId }).toArray();
+          return categories;
+        }
+
+        /**
            * Updates an existing category with partial data.
            * Automatically updates the updatedAt timestamp.
            *

@@ -429,4 +429,18 @@ export class TransactionRepository {
             await collection.createIndex({ userId: 1, dateTime: -1 });
         }
 
+    /**
+     * Update all transactions for a user that reference a specific categoryId to a new categoryId.
+     * Used when merging duplicate categories.
+     *
+     * @param userId - user id
+     * @param fromCategoryId - old category id to replace
+     * @param toCategoryId - new category id to set
+     */
+    async updateCategoryIdForUser(userId: string, fromCategoryId: string, toCategoryId: string): Promise<number> {
+      const collection = this.ensureCollection();
+      const res = await collection.updateMany({ userId, categoryId: fromCategoryId }, { $set: { categoryId: toCategoryId, updatedAt: new Date() } });
+      return res.modifiedCount || 0;
+    }
+
 }

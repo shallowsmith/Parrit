@@ -19,7 +19,7 @@ export const Colors = {
   },
   dark: {
     text: '#ECEDEE',
-    background: '#151718',
+    background: '#000000',
     tint: tintColorDark,
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
@@ -58,7 +58,7 @@ export const Fonts = Platform.select({
  */
 export const AppColors = {
   primary: '#6FA85F',           // Green buttons and accents
-  background: '#000000',         // Pure black background
+  background: '#000000',
   surface: '#1A1A1A',           // Slightly lighter for cards
   inputBg: '#3A4A3A',           // Dark green input background
   inputBorder: '#4A5A4A',       // Input border color

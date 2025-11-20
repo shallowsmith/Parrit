@@ -11,7 +11,8 @@ import type {
   UpdateProfileRequest,
   ProfileResponse
 } from '../models/Profile';
-import { setCustomUserClaims } from '../config/firebase-admin';
+import { setCustomUserClaims } from '../config/firebase-admin.js';
+import { CategoryRepository } from '../repositories/CategoryRepository';
 import { z } from 'zod';
 
 /**
@@ -87,7 +88,50 @@ export class ProfileService {
       // The user can still use the system, but may need to refresh token manually
     }
 
-    // Step 7: Transform to response format
+    // Step 7: Ensure a set of default categories exist for the new user (non-blocking)
+    // This seeds a standard list of expense buckets if they're not already present.
+    (async () => {
+      try {
+        const userId = createdProfile._id?.toString();
+        if (!userId) return;
+        const catRepo = new CategoryRepository();
+
+        // Fetch existing categories for the user and compare case-insensitively
+        const existingForUser = await catRepo.findByUserId(userId);
+        const existingNames = new Set(existingForUser.map(c => (c.name || '').toLowerCase()));
+
+        const defaults = [
+          'Food',
+          'Groceries',
+          'Rent',
+          'Utilities',
+          'Transportation',
+          'Entertainment',
+          'Travel',
+          'Gifts',
+          'Misc'
+        ];
+
+        for (const name of defaults) {
+          if (!existingNames.has(name.toLowerCase())) {
+            try {
+              await catRepo.createCategory({ name, type: 'expense', userId });
+              console.log(`Seeded '${name}' category for user ${userId}`);
+            } catch (err) {
+              // If the insert failed due to a unique constraint or race, ignore and continue
+              console.warn(
+                `Failed to create default category '${name}' for user ${userId}:`,
+                (err as any)?.message || String(err)
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to seed default categories for new user:', err);
+      }
+    })();
+
+    // Step 8: Transform to response format
     return toProfileResponse(createdProfile);
   }
 

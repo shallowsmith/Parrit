@@ -7,6 +7,8 @@ import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppColors } from '@/constants/theme';
+import { emit } from '@/utils/events';
+import { useRouter } from 'expo-router';
 
 export default function TabLayout() {
   const { isAuthenticated } = useAuth();
@@ -17,10 +19,9 @@ export default function TabLayout() {
     return <Redirect href="/(auth)/login" />;
   }
 
-  const handleVoicePress = () => {
-    // Voice input functionality will be implemented here
-    console.log('Voice button pressed');
-  };
+    const handleVoicePress = () => {
+      try { emit('mic:pressed'); } catch (e) { console.warn('emit mic:pressed failed', e); }
+    };
 
   return (
     <Tabs

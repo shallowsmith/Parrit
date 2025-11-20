@@ -194,7 +194,7 @@ Authorization: Bearer <your-jwt-token>
         },
         Transaction: {
           type: 'object',
-          required: ['id', 'userId', 'vendorName', 'description', 'dateTime', 'amount', 'paymentType', 'categoryName'],
+          required: ['id', 'userId', 'vendorName', 'description', 'dateTime', 'amount', 'paymentType', 'categoryId'],
           properties: {
             id: {
               type: 'string',
@@ -234,16 +234,28 @@ Authorization: Bearer <your-jwt-token>
               description: 'Type of payment used',
               example: 'Credit Card',
             },
-            categoryName: {
+            categoryId: {
               type: 'string',
-              description: 'Category name for the transaction',
-              example: 'Food & Dining',
+              description: 'Category ID for the transaction (MongoDB ObjectId)',
+              example: '507f1f77bcf86cd799439012',
             },
-            receiptImageUrl: {
+            receiptId: {
               type: 'string',
               nullable: true,
-              description: 'URL to receipt image',
-              example: 'https://example.com/receipt/starbucks-12345.jpg',
+              description: 'Optional receipt ID linked to this transaction (MongoDB ObjectId)',
+              example: '507f1f77bcf86cd799439013',
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description: 'Timestamp when the transaction was created',
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description: 'Timestamp when the transaction was last updated',
             },
           },
         },

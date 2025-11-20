@@ -22,6 +22,7 @@ import categoryRoutes from "./routes/category.routes";
 import transactionRoutes from "./routes/transaction.routes";
 import receiptRoutes from "./routes/receipt.routes";
 import spendingHistoryRoutes from "./routes/spendingHistory.routes";
+import googleAuthRoutes from "./routes/googleAuth.routes";
 
 // Create Express application instance
 const app = express();
@@ -47,6 +48,11 @@ app.use("/api/v1/users/:userId/receipts", receiptRoutes);
 
 // Spending history routes (aggregated spending reports)
 app.use("/api/v1/users/:userId/spending", spendingHistoryRoutes);
+
+// Google OAuth routes for Google Sheets export
+app.use("/api/v1/users/:userId/google", googleAuthRoutes);
+// Static OAuth callback route (matches Google Cloud Console redirect URI)
+app.use("/api/v1", googleAuthRoutes);
 
 /**
  * Starts the application server.

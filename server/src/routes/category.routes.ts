@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { CategoryService } from '../services/CategoryService';
 import { CategoryValidationError } from '../models/Category';
-import { authenticateToken, requireSameUser } from '../middleware/auth.middleware.js';
+import { authenticateToken, requireSameUser } from '../middleware/auth.middleware';
 
 const router = Router({ mergeParams: true });
 

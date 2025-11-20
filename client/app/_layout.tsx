@@ -1,64 +1,70 @@
 /**
  * Root Layout
  *
- * Main app layout with authentication management.
- * - Wraps app with AuthProvider
- * - Handles conditional routing based on auth state
- * - Shows loading screen while checking auth status
+ * Handles:
+ * - Firebase authentication state
+ * - Conditional routing (auth ↔ tabs)
+ * - Loading indicator during auth check
  */
 
-import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { View } from 'react-native';
-import { AppColors } from '@/constants/theme';
-import VoiceRecorder from '@/components/VoiceTransactionWidget';
+import { DarkTheme, ThemeProvider } from "@react-navigation/native";
+import { Stack, useRouter, useSegments } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
+import "react-native-reanimated";
+
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 function RootLayoutNav() {
   const { isAuthenticated, loading } = useAuth();
-  const segments = useSegments();
+  const segments = useSegments() as unknown as string[];
   const router = useRouter();
 
   useEffect(() => {
-    console.log('[RootLayout] Auth state:', { isAuthenticated, loading, segments });
-
-    if (loading) {
-      console.log('[RootLayout] Still loading, waiting...');
+    // 🔸 Don't do anything until router + segments are ready
+    if (!segments || segments.length === 0) {
+      console.log("[RootLayout] Waiting for route segments...");
       return;
     }
 
-    const inAuthGroup = segments[0] === '(auth)';
-    console.log('[RootLayout] Current segment group:', segments[0], '| inAuthGroup:', inAuthGroup);
-
-    if (!isAuthenticated && !inAuthGroup) {
-      // Redirect to login if not authenticated
-      console.log('[RootLayout] Not authenticated, redirecting to login...');
-      router.replace('/(auth)/login');
-    } else if (isAuthenticated && inAuthGroup) {
-      // Redirect to main app if authenticated
-      console.log('[RootLayout] Authenticated in auth group, redirecting to tabs...');
-      router.replace('/(tabs)');
-    } else {
-      console.log('[RootLayout] No navigation change needed');
+    if (loading) {
+      console.log("[RootLayout] Still checking authentication...");
+      return;
     }
-  }, [isAuthenticated, loading, segments]);
 
+    // ✅ Safely cast segments to string[]
+    const seg = segments as string[];
+    const currentGroup = seg[0];
+    const inAuthGroup = currentGroup === "(auth)";
+
+    console.log("[RootLayout] Route group:", currentGroup, "| Authenticated:", isAuthenticated);
+
+    // ✅ Redirect based on authentication state
+    if (!isAuthenticated && !inAuthGroup) {
+      console.log("[RootLayout] Not authenticated → Redirecting to login...");
+      router.replace("/login");
+    } else if (isAuthenticated && inAuthGroup) {
+      console.log("[RootLayout] Authenticated user in auth route → Redirecting to tabs...");
+      router.replace("/(tabs)");
+    } else {
+      console.log("[RootLayout] Auth state & route OK → No redirect needed.");
+    }
+  }, [isAuthenticated, loading, segments, router]);
+
+  // Show a spinner while checking auth
   if (loading) {
-    console.log('[RootLayout] Rendering loading spinner...');
+    console.log("[RootLayout] Rendering loading spinner...");
     return <LoadingSpinner />;
   }
 
-  console.log('[RootLayout] Rendering main stack navigation');
-
+  // Normal navigation stack
+  console.log("[RootLayout] Rendering main stack navigation...");
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: AppColors.background } }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+      <Stack.Screen name="modal" options={{ presentation: "modal", title: "Modal" }} />
     </Stack>
   );
 }

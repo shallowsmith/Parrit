@@ -4,10 +4,12 @@
     "jsx": "react-jsx",
     "module": "esnext",
     "strict": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     }
   },
   "include": [
@@ -17,3 +19,4 @@
     "expo-env.d.ts"
   ]
 }
+

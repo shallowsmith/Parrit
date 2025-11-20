@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { BudgetService } from '../services/BudgetService';
 import { BudgetValidationError } from '../models/Budget';
-import { authenticateToken, requireSameUser } from '../middleware/auth.middleware.js';
+import { authenticateToken, requireSameUser } from '../middleware/auth.middleware';
 
 const router = Router({ mergeParams: true });
 

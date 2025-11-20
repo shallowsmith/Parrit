@@ -349,7 +349,7 @@ Authorization: Bearer <your-jwt-token>
       },
     },
   },
-  apis: ['./src/routes/*.ts'],
+  apis: ['./src/routes/**/*.ts', './src/routes/*.ts'],
 };
 
 const specs = swaggerJSDoc(options);

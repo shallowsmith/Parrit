@@ -38,7 +38,7 @@ export default function TransactionConfirm({ route, navigation }) {
             // If the AI category is not in list, add it
             const catNames = data.map((c) => c.name);
             if (transaction.category && !catNames.includes(transaction.category)) {
-            catNames.unshift(transaction.category + " (AI suggested)");
+            catNames.unshift(transaction.category + " ");
             }
 
             setCategories(catNames);

@@ -12,6 +12,10 @@ build/
 .env.local
 .env.*.local
 
+# Firebase credentials
+google-credentials.json
+**/google-credentials.json
+
 # IDE/Editor
 .vscode/
 .idea/

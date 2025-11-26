@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Button, Alert, StyleSheet, TextInput } from 'react-native';
-import { Modal, TouchableOpacity } from 'react-native';
+import { View, Text, Button, Alert, StyleSheet, TextInput, ScrollView , Modal, TouchableOpacity } from 'react-native';
 import {
   useAudioRecorder, useAudioRecorderState,
   AudioModule, RecordingPresets, setAudioModeAsync
@@ -10,11 +9,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import transactionService from '@/services/transaction.service';
 import huggingfaceService from '@/services/huggingface.service';
 import categoryService, { categoryServiceWritable } from '@/services/category.service';
-import { on } from '@/utils/events';
+import { on , emit } from '@/utils/events';
 import { DEFAULT_NEW_CATEGORY_COLOR } from '@/constants/categoryColors';
 import { extractAmount } from '@/utils/amount';
 import { mapTextToBucketByKeywords } from '@/utils/category';
-import { emit } from '@/utils/events';
 
 const ASSEMBLYAI_API_KEY: string | undefined = Constants.expoConfig?.extra?.ASSEMBLYAI_API_KEY;
 
@@ -31,6 +29,7 @@ export default function VoiceRecorder() {
   const [parsedDateISO, setParsedDateISO] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState('uncategorized');
   const [selectedPaymentType, setSelectedPaymentType] = useState('Credit');
+  const [isProcessing, setIsProcessing] = useState(false);
   const paymentTypes = ['Credit', 'Debit', 'Cash'];
   const [categoryBuckets, setCategoryBuckets] = useState<CategoryChip[]>(() => [
     { id: 'misc', label: 'Misc' },
@@ -164,6 +163,7 @@ export default function VoiceRecorder() {
 
   const stopRecording = async () => {
     try {
+      setIsProcessing(true);
       await recorder.stop();
       const uri = recorder.uri;
       setAudioUri(uri);
@@ -176,7 +176,11 @@ export default function VoiceRecorder() {
         } else {
         }
       }
-    } catch (e) { console.error('Failed to stop recording', e); }
+    } catch (e) {
+      console.error('Failed to stop recording', e);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Listen for a global mic press event so an external mic button can control recording.
@@ -262,6 +266,33 @@ export default function VoiceRecorder() {
   vendor = vendor.replace(/\bfor\b.*$/i, '').trim();
       if (!vendorName && vendor) setVendorName(vendor);
     }
+  }, [transcription]);
+
+  // Extract payment type from transcription
+  useEffect(() => {
+    if (!transcription) return;
+    const lowerText = transcription.toLowerCase();
+
+    // Check for "credit" or "credit card" mentions
+    if (lowerText.match(/\b(credit|credit card)\b/i)) {
+      setSelectedPaymentType('Credit');
+      return;
+    }
+
+    // Check for "debit" or "debit card" mentions
+    if (lowerText.match(/\b(debit|debit card)\b/i)) {
+      setSelectedPaymentType('Debit');
+      return;
+    }
+
+    // Check for "cash" mentions
+    if (lowerText.match(/\bcash\b/i)) {
+      setSelectedPaymentType('Cash');
+      return;
+    }
+
+    // Default to Credit if no payment type is mentioned
+    // (already initialized to 'Credit' in state, so no need to set again)
   }, [transcription]);
 
   const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -452,11 +483,16 @@ export default function VoiceRecorder() {
       const res = await transactionService.createTransaction(profile.id, payload);
       if (res.status === 201) {
         Alert.alert('Saved', 'Transaction saved successfully');
+        // Reset all state
         setVendorName('');
         setAmount('');
         setCategoryId('uncategorized');
         setTranscription(null);
         setAudioUri(null);
+        setSelectedPaymentType('Credit');
+        setIsProcessing(false);
+        // Close the modal
+        setWidgetModalVisible(false);
         try { emit('transactions:changed'); } catch (e) { console.warn('emit failed', e); }
       } else {
         Alert.alert('Unexpected response', `Status ${res.status}`);
@@ -472,20 +508,43 @@ export default function VoiceRecorder() {
       {/* Recording is controlled via the global mic button. Emit 'mic:pressed' to toggle recording. */}
       <Modal visible={widgetModalVisible} transparent animationType="slide">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#000000', borderRadius: 12, padding: 16, maxHeight: '90%' }}>
-            <TouchableOpacity onPress={async () => { if (state.isRecording) await stopRecording(); setWidgetModalVisible(false); }} style={{ position: 'absolute', right: 12, top: 12, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#9CA3AF', fontSize: 20 }}>✕</Text>
-            </TouchableOpacity>
+          <View style={{ backgroundColor: '#000000', borderRadius: 12, maxHeight: '90%' }}>
+            {!state.isRecording && !isProcessing && (
+              <TouchableOpacity onPress={async () => {
+                if (state.isRecording) await stopRecording();
+                setIsProcessing(false);
+                setWidgetModalVisible(false);
+              }} style={{ position: 'absolute', right: 12, top: 12, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                <Text style={{ color: '#9CA3AF', fontSize: 20 }}>✕</Text>
+              </TouchableOpacity>
+            )}
 
-            {audioUri && <Text style={styles.uri}>Recorded Audio: {audioUri}</Text>}
-            {state.isRecording && <Text>Recording… {Math.round(state.durationMillis / 1000)}s</Text>}
+            <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={true}>
+              {audioUri && <Text style={styles.uri}>Recorded Audio: {audioUri}</Text>}
 
-            {/* Start/Stop control (shows previous inline button behavior inside the popup) */}
-            <View style={{ marginTop: 8, marginBottom: 8, alignItems: 'center' }}>
-              <Button title={state.isRecording ? 'Stop Recording' : 'Start Recording'} onPress={state.isRecording ? stopRecording : record} />
-            </View>
+            {/* Start/Stop control - only show if there's no transcription yet */}
+            {!transcription && state.isRecording && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center', marginBottom: 12 }}>Recording in progress</Text>
+                <TouchableOpacity onPress={stopRecording} style={{ padding: 12, backgroundColor: '#EF4444', borderRadius: 8, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Stop Recording</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-            {!transcription && !state.isRecording && (
+            {!transcription && !state.isRecording && isProcessing && (
+              <View style={{ marginTop: 12, alignItems: 'center', paddingVertical: 20 }}>
+                <Text style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center' }}>Processing your recording...</Text>
+              </View>
+            )}
+
+            {!transcription && !state.isRecording && !isProcessing && (
+              <View style={{ marginTop: 8, marginBottom: 8, alignItems: 'center' }}>
+                <Button title="Start Recording" onPress={record} />
+              </View>
+            )}
+
+            {!transcription && !state.isRecording && !isProcessing && (
               <View style={{ paddingVertical: 8, alignItems: 'center' }}>
                 <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>Tap the mic to start recording</Text>
               </View>
@@ -620,11 +679,12 @@ export default function VoiceRecorder() {
                   style={styles.input}
                 />
 
-                <View style={{ marginTop: 10 }}>
-                  <Button title="Save Transaction" onPress={saveTransaction} />
-                </View>
+                <TouchableOpacity onPress={saveTransaction} style={{ marginTop: 16, padding: 12, backgroundColor: '#7DA669', borderRadius: 8, alignItems: 'center', marginBottom: 24 }}>
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Save Transaction</Text>
+                </TouchableOpacity>
               </View>
             )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -713,9 +773,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   chipSelected: {
-    backgroundColor: '#10b981',
-    borderColor: '#10b981',
-    color: '#072f15',
+    backgroundColor: '#7DA669',
+    borderColor: '#7DA669',
+    color: '#fff',
   },
   fieldLabel: { color: '#9CA3AF', fontSize: 12, marginTop: 6, marginBottom: 4 },
 });

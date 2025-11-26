@@ -138,6 +138,17 @@ export class CategoryService {
           return categories.map(category => toCategoryResponse(category));
         }
 
+      /**
+         * Retrieves all categories for a specific user.
+         *
+         * @param {string} userId - The user ID
+         * @returns {Promise<CategoryResponse[]>} Array of user's categories
+         */
+        async getCategoriesByUserId(userId: string): Promise<CategoryResponse[]> {
+          const categories = await this.categoryRepository.findByUserId(userId);
+          return categories.map(category => toCategoryResponse(category));
+        }
+
     /**
        * Updates an existing category with validation.
        *

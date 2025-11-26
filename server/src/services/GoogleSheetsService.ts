@@ -48,7 +48,7 @@ export class GoogleSheetsService {
 
   /**
    * Creates a new Google Sheet with transaction data
-   * @param transactions - Array of transactions to export
+   * @param transactions - Array of transactions to export (with categoryName populated)
    * @param sheetTitle - Title for the spreadsheet
    * @returns Google Sheet URL
    */
@@ -79,7 +79,7 @@ export class GoogleSheetsService {
       'Description',
       'Amount',
       'Payment Type',
-      'Category ID',
+      'Category',
     ];
 
     const rows = transactions.map((t) => {
@@ -97,7 +97,7 @@ export class GoogleSheetsService {
         t.description || '',
         t.amount || 0,
         t.paymentType || '',
-        t.categoryId || '',
+        t.categoryName || 'Uncategorized',
       ];
     });
 
@@ -105,17 +105,18 @@ export class GoogleSheetsService {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: 'A1',
-      valueInputOption: 'RAW',
+      valueInputOption: 'USER_ENTERED', // Changed to USER_ENTERED for number formatting
       requestBody: {
         values: [headers, ...rows],
       },
     });
 
-    // Format header row
+    // Apply comprehensive formatting
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
         requests: [
+          // Format header row (bold, colored background, white text)
           {
             repeatCell: {
               range: {
@@ -125,24 +126,111 @@ export class GoogleSheetsService {
               },
               cell: {
                 userEnteredFormat: {
-                  backgroundColor: { red: 0.2, green: 0.6, blue: 0.9 },
+                  backgroundColor: { red: 0.26, green: 0.65, blue: 0.30 }, // Green color
                   textFormat: {
                     foregroundColor: { red: 1, green: 1, blue: 1 },
                     bold: true,
+                    fontSize: 11,
                   },
+                  horizontalAlignment: 'CENTER',
+                  verticalAlignment: 'MIDDLE',
                 },
               },
-              fields: 'userEnteredFormat(backgroundColor,textFormat)',
+              fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
             },
           },
+          // Freeze header row
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId: 0,
+                gridProperties: {
+                  frozenRowCount: 1,
+                },
+              },
+              fields: 'gridProperties.frozenRowCount',
+            },
+          },
+          // Format Amount column (D) as currency
+          {
+            repeatCell: {
+              range: {
+                sheetId: 0,
+                startRowIndex: 1, // Skip header
+                startColumnIndex: 3, // Column D (Amount)
+                endColumnIndex: 4,
+              },
+              cell: {
+                userEnteredFormat: {
+                  numberFormat: {
+                    type: 'CURRENCY',
+                    pattern: '$#,##0.00',
+                  },
+                  horizontalAlignment: 'RIGHT',
+                },
+              },
+              fields: 'userEnteredFormat(numberFormat,horizontalAlignment)',
+            },
+          },
+          // Add borders around all cells
+          {
+            updateBorders: {
+              range: {
+                sheetId: 0,
+                startRowIndex: 0,
+                endRowIndex: transactions.length + 1, // +1 for header
+                startColumnIndex: 0,
+                endColumnIndex: 6,
+              },
+              top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+              innerVertical: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+            },
+          },
+          // Auto-resize all columns to fit content
           {
             autoResizeDimensions: {
               dimensions: {
                 sheetId: 0,
                 dimension: 'COLUMNS',
                 startIndex: 0,
-                endIndex: 7,
+                endIndex: 6,
               },
+            },
+          },
+          // Add extra padding to all columns (increase width by 20 pixels)
+          {
+            updateDimensionProperties: {
+              range: {
+                sheetId: 0,
+                dimension: 'COLUMNS',
+                startIndex: 0,
+                endIndex: 6,
+              },
+              properties: {
+                pixelSize: 150, // Set minimum width for all columns
+              },
+              fields: 'pixelSize',
+            },
+          },
+          // Enable text wrapping for Description column (C)
+          {
+            repeatCell: {
+              range: {
+                sheetId: 0,
+                startRowIndex: 1,
+                startColumnIndex: 2, // Column C (Description)
+                endColumnIndex: 3,
+              },
+              cell: {
+                userEnteredFormat: {
+                  wrapStrategy: 'WRAP',
+                },
+              },
+              fields: 'userEnteredFormat.wrapStrategy',
             },
           },
         ],

@@ -12,6 +12,7 @@ import type { Request, Response } from "express";
 import { GoogleSheetsService } from '../services/GoogleSheetsService';
 import { TransactionService } from '../services/TransactionService';
 import { ProfileService } from '../services/ProfileService';
+import { CategoryService } from '../services/CategoryService';
 import { authenticateToken, requireSameUser } from '../middleware/auth.middleware.js';
 
 const router = Router({ mergeParams: true });
@@ -19,6 +20,7 @@ const router = Router({ mergeParams: true });
 const googleSheetsService = new GoogleSheetsService();
 const transactionService = new TransactionService();
 const profileService = new ProfileService();
+const categoryService = new CategoryService();
 
 /**
  * @swagger
@@ -204,9 +206,24 @@ router.get("/auth/google/callback", async (req: Request, res: Response) => {
 
     // Fetch transactions and create sheet
     const transactions = await transactionService.getTransactionsByUserId(userId);
+
+    // Fetch all categories for this user to map IDs to names
+    const categories = await categoryService.getCategoriesByUserId(userId);
+
+    // Create a map of categoryId -> categoryName for quick lookup
+    const categoryMap = new Map(
+      categories.map((cat: any) => [cat.id || cat._id?.toString(), cat.name])
+    );
+
+    // Enrich transactions with category names
+    const enrichedTransactions = transactions.map((t: any) => ({
+      ...t,
+      categoryName: categoryMap.get(t.categoryId) || 'Uncategorized',
+    }));
+
     const sheetTitle = `Parrit Transactions - ${new Date().toLocaleDateString()}`;
     const sheetUrl = await googleSheetsService.createSheetWithTransactions(
-      transactions,
+      enrichedTransactions,
       sheetTitle
     );
 
@@ -446,10 +463,24 @@ router.get("/callback", async (req: Request, res: Response) => {
     // Fetch user's transactions
     const transactions = await transactionService.getTransactionsByUserId(userId);
 
+    // Fetch all categories for this user to map IDs to names
+    const categories = await categoryService.getCategoriesByUserId(userId);
+
+    // Create a map of categoryId -> categoryName for quick lookup
+    const categoryMap = new Map(
+      categories.map((cat: any) => [cat.id || cat._id?.toString(), cat.name])
+    );
+
+    // Enrich transactions with category names
+    const enrichedTransactions = transactions.map((t: any) => ({
+      ...t,
+      categoryName: categoryMap.get(t.categoryId) || 'Uncategorized',
+    }));
+
     // Create Google Sheet with transactions
     const sheetTitle = `Parrit Transactions - ${new Date().toLocaleDateString()}`;
     const sheetUrl = await googleSheetsService.createSheetWithTransactions(
-      transactions,
+      enrichedTransactions,
       sheetTitle
     );
 
@@ -646,10 +677,24 @@ router.post("/export", authenticateToken, requireSameUser('userId'), async (req:
       // Fetch transactions
       const transactions = await transactionService.getTransactionsByUserId(userId);
 
+      // Fetch all categories for this user to map IDs to names
+      const categories = await categoryService.getCategoriesByUserId(userId);
+
+      // Create a map of categoryId -> categoryName for quick lookup
+      const categoryMap = new Map(
+        categories.map((cat: any) => [cat.id || cat._id?.toString(), cat.name])
+      );
+
+      // Enrich transactions with category names
+      const enrichedTransactions = transactions.map((t: any) => ({
+        ...t,
+        categoryName: categoryMap.get(t.categoryId) || 'Uncategorized',
+      }));
+
       // Create Google Sheet
       const sheetTitle = `Parrit Transactions - ${new Date().toLocaleDateString()}`;
       const sheetUrl = await googleSheetsService.createSheetWithTransactions(
-        transactions,
+        enrichedTransactions,
         sheetTitle
       );
 

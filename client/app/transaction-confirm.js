@@ -70,30 +70,37 @@ export default function TransactionConfirm({ route, navigation }) {
             return;
         }
 
-        let resolvedCategory = categoryId;
+        let resolvedCategoryId = categoryId;
         const selected = categoryBuckets.find((c) => c.label === categoryId || c.id === categoryId);
-        if (!selected && profile?.id) {
+        if (selected && selected.id !== 'ai') {
+            // Use the actual category ID from the selected bucket
+            resolvedCategoryId = selected.id;
+        } else if (!selected && profile?.id) {
+            // Create new category if it doesn't exist
             const created = await categoryServiceWritable.createCategory(profile.id, {
-            name: categoryId,
+            name: categoryId.replace(' (AI Suggested)', ''),
             type: 'expense',
             userId: profile.id,
             color: DEFAULT_NEW_CATEGORY_COLOR,
             });
-            resolvedCategory = created.data.name;
+            resolvedCategoryId = created.data.id || created.data._id;
             emit('categories:changed');
         }
 
+        // Format date to ISO 8601 datetime string
+        const dateTimeISO = date ? new Date(date).toISOString() : new Date().toISOString();
+
         const payload = {
-            merchant,
-            total: parseFloat(amount),
-            description,
-            category: resolvedCategory.replace(' (AI Suggested)', ''),
-            date,
-            paymentType,
-            receiptImage,
+            userId: profile.id,
+            vendorName: merchant,
+            description: description || merchant,
+            dateTime: dateTimeISO,
+            amount: parseFloat(amount),
+            paymentType: paymentType,
+            categoryId: resolvedCategoryId,
         };
 
-        const res = await fetch(`${backendURL}/api/v1/users/${userId}/receipts`, {
+        const res = await fetch(`${backendURL}/api/v1/users/${userId}/transactions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),

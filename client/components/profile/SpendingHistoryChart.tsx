@@ -28,8 +28,9 @@ export const SpendingHistoryChart: React.FC = () => {
       setError(null);
 
       try {
-        const allTransactions = await transactionService.getTransactions(profile.id);
-        
+        const response = await transactionService.getTransactions(profile.id);
+        const allTransactions = Array.isArray(response.data) ? response.data : [];
+
         // Filter transactions based on time period
         const now = new Date();
         let startDate: Date;

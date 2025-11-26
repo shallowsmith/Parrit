@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import transactionService from '@/services/transaction.service';
 import huggingfaceService from '@/services/huggingface.service';
 import categoryService, { categoryServiceWritable } from '@/services/category.service';
+import categoryPreferencesService from '@/services/categoryPreferences.service';
 import { on , emit } from '@/utils/events';
 import { DEFAULT_NEW_CATEGORY_COLOR } from '@/constants/categoryColors';
 import { extractAmount } from '@/utils/amount';
@@ -90,7 +91,7 @@ export default function VoiceRecorder() {
         const cats = Array.isArray(res.data) ? res.data : [];
   const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
   const mapped = cats.map((c: any) => ({ id: c.id || c._id, label: capitalize(c.name || ''), serverId: c.id || c._id }));
-        const withMisc = [{ id: 'misc', label: 'Misc' }, ...mapped];
+        const withMisc = [{ id: 'misc', label: 'Misc', serverId: 'misc' }, ...mapped];
         const seen = new Map<string, any>();
         const deduped = withMisc.filter(c => {
           const key = String(c.label || '').toLowerCase();
@@ -98,7 +99,15 @@ export default function VoiceRecorder() {
           seen.set(key, true);
           return true;
         });
-        setCategoryBuckets(deduped);
+
+        // Filter by user's category preferences
+        const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
+        const filtered = deduped.filter(c => {
+          const id = c.serverId || c.id;
+          return prefs[String(id)] ?? true; // Default to enabled
+        });
+
+        setCategoryBuckets(filtered);
       } catch (err) {
         console.warn('Failed to load categories', err);
       }
@@ -116,7 +125,7 @@ export default function VoiceRecorder() {
         const cats = Array.isArray(res.data) ? res.data : [];
         const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
         const mapped = cats.map((c: any) => ({ id: c.id || c._id, label: capitalize(c.name || ''), serverId: c.id || c._id }));
-        const withMisc = [{ id: 'misc', label: 'Misc' }, ...mapped];
+        const withMisc = [{ id: 'misc', label: 'Misc', serverId: 'misc' }, ...mapped];
         const seen = new Map<string, any>();
         const deduped = withMisc.filter(c => {
           const key = String(c.label || '').toLowerCase();
@@ -124,7 +133,15 @@ export default function VoiceRecorder() {
           seen.set(key, true);
           return true;
         });
-        setCategoryBuckets(deduped);
+
+        // Filter by user's category preferences
+        const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
+        const filtered = deduped.filter(c => {
+          const id = c.serverId || c.id;
+          return prefs[String(id)] ?? true; // Default to enabled
+        });
+
+        setCategoryBuckets(filtered);
       } catch (err) {
         console.warn('Failed to refresh categories on event', err);
       }
@@ -432,27 +449,40 @@ export default function VoiceRecorder() {
       found = categoryBuckets.find((c: any) => String(c.label || '').toLowerCase() === raw.toLowerCase());
       if (found) return found.serverId || found.id;
 
+      // Category not found in visible buckets - check if it exists but is unchecked
       if (profile?.id) {
         try {
-          try {
-            const res = await categoryService.getCategories(profile.id);
-            const cats = Array.isArray(res.data) ? res.data : [];
-            const match = cats.find((c: any) => String(c.name || '').toLowerCase() === raw.toLowerCase() || String(c.name || '').toLowerCase().replace(/\s+/g, '_') === raw.toLowerCase().replace(/\s+/g, '_'));
-            if (match) return match.id || match._id || raw;
-          } catch (e) {
+          // Check all categories (not just visible ones)
+          const res = await categoryService.getCategories(profile.id);
+          const cats = Array.isArray(res.data) ? res.data : [];
+          const match = cats.find((c: any) => String(c.name || '').toLowerCase() === raw.toLowerCase() || String(c.name || '').toLowerCase().replace(/\s+/g, '_') === raw.toLowerCase().replace(/\s+/g, '_'));
+
+          if (match) {
+            // Category exists - enable it and return its ID
+            const catId = match.id || match._id;
+            await categoryPreferencesService.enableCategory(profile.id, String(catId));
+            return catId;
           }
 
+          // Category doesn't exist - create it
           const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
           const created = createRes.data;
+          const createdId = created.id || created._id;
+          // Auto-enable newly created category
+          await categoryPreferencesService.enableCategory(profile.id, String(createdId));
           try { emit('categories:changed'); } catch (e) { /* ignore */ }
-          return created.id || created._id || raw;
+          return createdId || raw;
         } catch (err: any) {
           if (err?.response?.status === 409) {
             try {
               const res = await categoryService.getCategories(profile.id);
               const cats = Array.isArray(res.data) ? res.data : [];
               const match = cats.find((c: any) => String(c.name || '').toLowerCase() === raw.toLowerCase());
-              if (match) return match.id || match._id || raw;
+              if (match) {
+                const catId = match.id || match._id;
+                await categoryPreferencesService.enableCategory(profile.id, String(catId));
+                return catId || raw;
+              }
             } catch (e) {
             }
           }

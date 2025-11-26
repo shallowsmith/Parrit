@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import BudgetDonut from '@/components/BudgetDonut';
 import TransactionsList from '@/components/TransactionsList';
 import TransactionFilter from '@/components/TransactionFilter';
-import { normalizeCategoryKey, DEFAULT_NEW_CATEGORY_COLOR } from '@/constants/categoryColors';
+import { normalizeCategoryKey, DEFAULT_NEW_CATEGORY_COLOR, getCategoryColor } from '@/constants/categoryColors';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,7 @@ import budgetService from '@/services/budget.service';
 import transactionService from '@/services/transaction.service';
 import categoryService from '@/services/category.service';
 import { categoryServiceWritable } from '@/services/category.service';
+import categoryPreferencesService from '@/services/categoryPreferences.service';
 import { on } from '@/utils/events';
 import { emit } from '@/utils/events';
 
@@ -50,8 +51,9 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
       budgetService.getBudgets(profile.id),
       transactionService.getTransactions(profile.id),
       categoryService.getCategories(profile.id),
+      categoryPreferencesService.getCategoryPreferences(profile.id),
     ])
-      .then(([bRes, tRes, cRes]) => {
+      .then(([bRes, tRes, cRes, prefs]) => {
         if (!mounted) return;
         const budgets = bRes.data || [];
         // pick the most recent budget
@@ -62,6 +64,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
         setTransactions(txs);
         const cats = Array.isArray(cRes.data) ? cRes.data : [];
         setCategories(cats);
+        setSelectedCategoryIds(prefs);
         setSelectedGroup(null);
       })
       .catch((err) => {
@@ -73,8 +76,8 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
   useEffect(() => {
     if (!profile?.id) return;
     const handler = () => {
-      Promise.all([budgetService.getBudgets(profile.id), transactionService.getTransactions(profile.id), categoryService.getCategories(profile.id)])
-        .then(([bRes, tRes, cRes]) => {
+      Promise.all([budgetService.getBudgets(profile.id), transactionService.getTransactions(profile.id), categoryService.getCategories(profile.id), categoryPreferencesService.getCategoryPreferences(profile.id)])
+        .then(([bRes, tRes, cRes, prefs]) => {
           const budgets = bRes.data || [];
           const chosen = budgets.length ? budgets[0] : null;
           setBudget(chosen);
@@ -82,6 +85,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
           setTransactions(txs);
           const cats = Array.isArray(cRes.data) ? cRes.data : [];
           setCategories(cats);
+          setSelectedCategoryIds(prefs);
         })
         .catch((err) => console.error('Failed to refresh budgets/transactions', err));
     };
@@ -139,18 +143,38 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
     if (found) return found.id || found._id;
     if (profile?.id) {
       try {
+        // Check if category exists but might be unchecked
+        const res = await categoryService.getCategories(profile.id);
+        const cats = Array.isArray(res.data) ? res.data : [];
+        const match = cats.find((c: any) => String(c.name || '').toLowerCase() === raw.toLowerCase());
+
+        if (match) {
+          // Category exists - enable it and return its ID
+          const catId = match.id || match._id;
+          await categoryPreferencesService.enableCategory(profile.id, String(catId));
+          return catId;
+        }
+
+        // Category doesn't exist - create it
         const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
         const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
         const created = createRes.data;
+        const createdId = created.id || created._id;
+        // Auto-enable newly created category
+        await categoryPreferencesService.enableCategory(profile.id, String(createdId));
         try { emit('categories:changed'); } catch (e) { /* ignore */ }
-        return created.id || created._id || raw;
+        return createdId || raw;
       } catch (err: any) {
         if (err?.response?.status === 409) {
           try {
             const res = await categoryService.getCategories(profile.id);
             const cats = Array.isArray(res.data) ? res.data : [];
             const match = cats.find((c: any) => String(c.name || '').toLowerCase() === raw.toLowerCase());
-            if (match) return match.id || match._id || raw;
+            if (match) {
+              const catId = match.id || match._id;
+              await categoryPreferencesService.enableCategory(profile.id, String(catId));
+              return catId || raw;
+            }
           } catch (e) { /* fallthrough */ }
         }
         console.warn('Failed to create/find category', err);
@@ -237,7 +261,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
 
   const totalBudget = budget?.amount ?? 0;
   // Always compute remaining from the budget total minus what has been spent so it stays in sync
-  const remaining = Math.max(0, totalBudget - totalSpent);
+  const remaining = totalBudget - totalSpent;
 
   return (
     <ThemedView style={styles.container}>
@@ -257,8 +281,8 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
           <Text style={styles.largeText}>${totalBudget.toFixed(2)}</Text>
         </TouchableOpacity>
         <View style={styles.rightBox}>
-          <Text style={styles.smallText}>Remaining</Text>
-          <Text style={[styles.largeText, { color: remaining < 0 ? '#EF4444' : '#7DA669' }]}>${remaining.toFixed(2)}</Text>
+          <Text style={styles.smallText}>{remaining < 0 ? 'Over Budget' : 'Remaining'}</Text>
+          <Text style={[styles.largeText, { color: remaining < 0 ? '#EF4444' : '#7DA669' }]}>${Math.abs(remaining).toFixed(2)}</Text>
         </View>
       </View>
 
@@ -305,7 +329,10 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                 <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Categories</Text>
               </View>
               {/* Close button (X) in top-right of the modal */}
-              <TouchableOpacity onPress={() => setCategoriesModalVisible(false)} style={{ position: 'absolute', right: 16, top: 16, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Close categories">
+              <TouchableOpacity onPress={() => {
+                setCategoriesModalVisible(false);
+                emit('categories:changed'); // Trigger reload in other components
+              }} style={{ position: 'absolute', right: 16, top: 16, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Close categories">
                 <Text style={{ color: '#9CA3AF', fontSize: 20 }}>✕</Text>
               </TouchableOpacity>
               <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 32 }}>
@@ -317,10 +344,20 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                     const found = categories.find((c: any) => String(c.name || '').toLowerCase() === dn.toLowerCase());
                     const id = found ? (found.id || found._id) : dn;
                     const checked = Boolean(selectedCategoryIds[String(id)] ?? true);
+                    const color = getCategoryColor(id, categories);
                     return (
                       <View key={`def-${dn}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
-                        <Text style={{ color: '#fff', fontSize: 16 }}>{dn}</Text>
-                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          <View style={{ width: 6, height: 34, borderRadius: 3, backgroundColor: color, marginRight: 12 }} />
+                          <Text style={{ color: '#fff', fontSize: 16 }}>{dn}</Text>
+                        </View>
+                        <TouchableOpacity onPress={async () => {
+                          const newPrefs = { ...selectedCategoryIds, [String(id)]: !checked };
+                          setSelectedCategoryIds(newPrefs);
+                          if (profile?.id) {
+                            await categoryPreferencesService.saveCategoryPreferences(profile.id, newPrefs);
+                          }
+                        }} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: checked ? '#7DA669' : '#4B5563' }}>
                           {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
                         </TouchableOpacity>
                       </View>
@@ -337,10 +374,20 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                   return custom.map((c: any) => {
                     const id = c.id || c._id;
                     const checked = Boolean(selectedCategoryIds[String(id)] ?? true);
+                    const color = getCategoryColor(id, categories);
                     return (
                       <View key={id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
-                        <Text style={{ color: '#fff', fontSize: 16 }}>{c.name}</Text>
-                        <TouchableOpacity onPress={() => setSelectedCategoryIds(prev => ({ ...prev, [String(id)]: !prev[String(id)] }))} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: checked ? 0 : 1, borderColor: '#22343a' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          <View style={{ width: 6, height: 34, borderRadius: 3, backgroundColor: color, marginRight: 12 }} />
+                          <Text style={{ color: '#fff', fontSize: 16 }}>{c.name}</Text>
+                        </View>
+                        <TouchableOpacity onPress={async () => {
+                          const newPrefs = { ...selectedCategoryIds, [String(id)]: !checked };
+                          setSelectedCategoryIds(newPrefs);
+                          if (profile?.id) {
+                            await categoryPreferencesService.saveCategoryPreferences(profile.id, newPrefs);
+                          }
+                        }} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: checked ? '#7DA669' : '#4B5563' }}>
                           {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
                         </TouchableOpacity>
                       </View>

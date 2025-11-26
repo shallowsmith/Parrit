@@ -5,9 +5,10 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import categoryService, { categoryServiceWritable } from "@/services/category.service";
+import categoryPreferencesService from "@/services/categoryPreferences.service";
 import transactionService from "@/services/transaction.service";
 import { DEFAULT_NEW_CATEGORY_COLOR } from "@/constants/categoryColors";
-import { emit } from "@/utils/events";
+import { emit, on } from "@/utils/events";
 
 export default function TransactionConfirm() {
     const router = useRouter();
@@ -53,25 +54,81 @@ export default function TransactionConfirm() {
             serverId: c.id || c._id,
             }));
 
+            // Filter by user's category preferences
+            const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
+            const filtered = mapped.filter(c => {
+                const id = c.serverId || c.id;
+                return prefs[String(id)] ?? true; // Default to enabled
+            });
+
             // Check if AI-suggested category already exists in user's categories (case-insensitive)
             const normalizedCat = data.category === "misc" ? "Uncategorized" : data.category;
-            const existingCategory = mapped.find((c) => c.label.toLowerCase() === normalizedCat?.toLowerCase());
+            const existingCategory = filtered.find((c) => c.label.toLowerCase() === normalizedCat?.toLowerCase());
 
             if (existingCategory) {
                 // Use the existing category's label (preserves user's capitalization)
                 setCategoryId(existingCategory.label);
             } else if (normalizedCat) {
-                // Add AI suggested category if it doesn't exist
-                mapped.unshift({ id: "ai", label: `${normalizedCat} (AI Suggested)` });
+                // Add AI suggested category if it doesn't exist (even if unchecked, allow AI suggestions)
+                filtered.unshift({ id: "ai", label: `${normalizedCat} (AI Suggested)` });
                 setCategoryId(`${normalizedCat} (AI Suggested)`);
             }
 
-            setCategoryBuckets(mapped);
+            setCategoryBuckets(filtered);
         } catch (err) {
             console.warn("Failed to load categories", err);
         }
         })();
     }, [profile?.id]);
+
+    // Listen for category changes (when Categories modal closes or categories are updated)
+    useEffect(() => {
+        if (!profile?.id) return;
+
+        const handler = async () => {
+            try {
+                const res = await categoryService.getCategories(profile.id);
+                const cats = Array.isArray(res.data) ? res.data : [];
+
+                // Remove duplicates by name (case-insensitive)
+                const uniqueCats = cats.reduce((acc, current) => {
+                    const existingIndex = acc.findIndex(
+                        item => item.name.toLowerCase() === current.name.toLowerCase()
+                    );
+                    if (existingIndex === -1) {
+                        acc.push(current);
+                    }
+                    return acc;
+                }, []);
+
+                const mapped = uniqueCats.map((c) => ({
+                    id: c.id || c._id,
+                    label: c.name,
+                    serverId: c.id || c._id,
+                }));
+
+                // Filter by user's category preferences
+                const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
+                const filtered = mapped.filter(c => {
+                    const id = c.serverId || c.id;
+                    return prefs[String(id)] ?? true; // Default to enabled
+                });
+
+                // Preserve AI-suggested category if it exists
+                const currentAiCategory = categoryBuckets.find(c => c.id === "ai");
+                if (currentAiCategory && !filtered.find(c => c.label === currentAiCategory.label)) {
+                    filtered.unshift(currentAiCategory);
+                }
+
+                setCategoryBuckets(filtered);
+            } catch (err) {
+                console.warn("Failed to refresh categories on event", err);
+            }
+        };
+
+        const unsubscribe = on('categories:changed', handler);
+        return () => unsubscribe();
+    }, [profile?.id, categoryBuckets]);
 
     const saveTransaction = async () => {
         console.log("💾 Save transaction clicked");
@@ -96,14 +153,17 @@ export default function TransactionConfirm() {
             );
 
             if (selected && selected.id === 'ai') {
-                // AI suggested category - check if it exists in user's categories
-                const existingCategory = categoryBuckets.find((c) =>
-                    c.label.toLowerCase() === cleanCategoryName.toLowerCase() && c.id !== 'ai'
+                // AI suggested category - check if it exists in all categories (not just visible ones)
+                const allCatsRes = await categoryService.getCategories(profile.id);
+                const allCats = Array.isArray(allCatsRes.data) ? allCatsRes.data : [];
+                const existingCategory = allCats.find((c) =>
+                    String(c.name || '').toLowerCase() === cleanCategoryName.toLowerCase()
                 );
 
                 if (existingCategory) {
-                    // Use existing category
-                    resolvedCategoryId = existingCategory.id;
+                    // Use existing category and enable it
+                    resolvedCategoryId = existingCategory.id || existingCategory._id;
+                    await categoryPreferencesService.enableCategory(profile.id, String(resolvedCategoryId));
                 } else {
                     // Create new category from AI suggestion
                     const created = await categoryServiceWritable.createCategory(profile.id, {
@@ -113,21 +173,38 @@ export default function TransactionConfirm() {
                         color: DEFAULT_NEW_CATEGORY_COLOR,
                     });
                     resolvedCategoryId = created.data.id || created.data._id;
+                    // Auto-enable newly created category
+                    await categoryPreferencesService.enableCategory(profile.id, String(resolvedCategoryId));
                     emit("categories:changed");
                 }
             } else if (selected) {
-                // Existing category selected
+                // Existing category selected (already visible, so already enabled)
                 resolvedCategoryId = selected.id;
             } else if (!selected && profile?.id) {
-                // Custom category entered - create it
-                const created = await categoryServiceWritable.createCategory(profile.id, {
-                    name: cleanCategoryName,
-                    type: "expense",
-                    userId: profile.id,
-                    color: DEFAULT_NEW_CATEGORY_COLOR,
-                });
-                resolvedCategoryId = created.data.id || created.data._id;
-                emit("categories:changed");
+                // Custom category manually typed - check if it exists but is unchecked
+                const allCatsRes = await categoryService.getCategories(profile.id);
+                const allCats = Array.isArray(allCatsRes.data) ? allCatsRes.data : [];
+                const existingCategory = allCats.find((c) =>
+                    String(c.name || '').toLowerCase() === cleanCategoryName.toLowerCase()
+                );
+
+                if (existingCategory) {
+                    // Category exists but was unchecked - use it and enable it
+                    resolvedCategoryId = existingCategory.id || existingCategory._id;
+                    await categoryPreferencesService.enableCategory(profile.id, String(resolvedCategoryId));
+                } else {
+                    // Create new category
+                    const created = await categoryServiceWritable.createCategory(profile.id, {
+                        name: cleanCategoryName,
+                        type: "expense",
+                        userId: profile.id,
+                        color: DEFAULT_NEW_CATEGORY_COLOR,
+                    });
+                    resolvedCategoryId = created.data.id || created.data._id;
+                    // Auto-enable newly created category
+                    await categoryPreferencesService.enableCategory(profile.id, String(resolvedCategoryId));
+                    emit("categories:changed");
+                }
             }
 
             // Format date to ISO 8601 datetime string

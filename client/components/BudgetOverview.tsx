@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Button, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import BudgetDonut from '@/components/BudgetDonut';
 import TransactionsList from '@/components/TransactionsList';
 import TransactionFilter from '@/components/TransactionFilter';
@@ -15,17 +16,21 @@ import { on } from '@/utils/events';
 import { emit } from '@/utils/events';
 
 
-export default function BudgetOverview() {
+export default function BudgetOverview({ editTransactionParam }: { editTransactionParam?: string }) {
   const { profile } = useAuth();
+  const router = useRouter();
   const [budget, setBudget] = useState<any | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingTx, setEditingTx] = useState<any | null>(null);
+  const [processedParam, setProcessedParam] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState('');
   const [editVendor, setEditVendor] = useState('');
   const [editAmount, setEditAmount] = useState('');
   const [editCategoryInput, setEditCategoryInput] = useState('');
+  const [editPaymentType, setEditPaymentType] = useState('Credit');
+  const paymentTypes = ['Credit', 'Debit', 'Cash'];
   const [editBudgetModalVisible, setEditBudgetModalVisible] = useState(false);
   const [editBudgetAmount, setEditBudgetAmount] = useState('');
   const [editBudgetRemaining, setEditBudgetRemaining] = useState('');
@@ -86,15 +91,43 @@ export default function BudgetOverview() {
     return () => { unsubscribeTx(); unsubscribeCat(); };
   }, [profile?.id]);
 
+  // Listen for navigation param to open edit modal for a specific transaction
+  useEffect(() => {
+    // Only process if we haven't already processed this exact param
+    if (editTransactionParam && categories.length > 0 && editTransactionParam !== processedParam) {
+      try {
+        const transaction = JSON.parse(editTransactionParam);
+        console.log('📝 [BUDGET OVERVIEW] Opening edit modal from navigation param:', transaction);
+        handleSelectTransaction(transaction);
+        // Mark this param as processed so we don't open it again
+        setProcessedParam(editTransactionParam);
+        // Clear the navigation param to prevent re-processing
+        router.setParams({ editTransaction: undefined });
+      } catch (err) {
+        console.error('Failed to parse editTransactionParam:', err);
+      }
+    }
+  }, [editTransactionParam, categories, processedParam]);
+
+  // Debug: Monitor editModalVisible state changes
+  useEffect(() => {
+    console.log('🟢 [BUDGET OVERVIEW] editModalVisible changed to:', editModalVisible);
+  }, [editModalVisible]);
+
   // Handler when a transaction is selected from the list
   const handleSelectTransaction = (tx: any) => {
+    console.log('🔵 [BUDGET OVERVIEW] handleSelectTransaction called with:', tx);
+    console.log('🔵 [BUDGET OVERVIEW] Transaction ID:', tx?.id || tx?._id);
+    console.log('🔵 [BUDGET OVERVIEW] Setting modal visible to true');
     setEditingTx(tx);
     setEditDescription(tx.description || '');
     setEditVendor(tx.vendorName || '');
     setEditAmount(String(tx.amount || ''));
+    setEditPaymentType(tx.paymentType || 'Credit');
     const cat = categories.find((c: any) => String(c.id) === String(tx.categoryId) || String(c._id) === String(tx.categoryId));
     setEditCategoryInput(cat ? (cat.name || String(cat.id || cat._id)) : String(tx.categoryId || ''));
     setEditModalVisible(true);
+    console.log('🔵 [BUDGET OVERVIEW] Modal state updated');
   };
 
   const resolveCategoryForEdit = async (rawInput: string) => {
@@ -137,6 +170,7 @@ export default function BudgetOverview() {
         vendorName: editVendor || 'Unknown',
         description: editDescription || '',
         amount: parsedAmount,
+        paymentType: editPaymentType,
         categoryId: resolvedCategoryId || 'misc',
       };
       const txId = editingTx.id || editingTx._id;
@@ -147,6 +181,7 @@ export default function BudgetOverview() {
       try { emit('transactions:changed'); } catch (e) { /* ignore */ }
       setEditModalVisible(false);
       setEditingTx(null);
+      setProcessedParam(null); // Clear processed param so it can be opened again if needed
     } catch (err) {
       console.error('Failed to save edited transaction', err);
       const msg = (err as any)?.response?.data?.error || String(err);
@@ -354,11 +389,19 @@ export default function BudgetOverview() {
             <TextInput value={editDescription} onChangeText={setEditDescription} style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Amount</Text>
             <TextInput value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Payment Type</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 }}>
+              {paymentTypes.map((type) => (
+                <TouchableOpacity key={type} onPress={() => setEditPaymentType(type)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 18, backgroundColor: editPaymentType === type ? '#10b981' : '#222', borderWidth: 1, borderColor: editPaymentType === type ? '#10b981' : '#333', marginRight: 8, marginBottom: 8 }}>
+                  <Text style={{ color: editPaymentType === type ? '#072f15' : '#fff' }}>{type}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Category (name or id)</Text>
             <TextInput value={editCategoryInput} onChangeText={setEditCategoryInput} placeholder="e.g. Groceries" style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
 
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditingTx(null); }} style={{ padding: 10, marginRight: 8 }}>
+              <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditingTx(null); setProcessedParam(null); }} style={{ padding: 10, marginRight: 8 }}>
                 <Text style={{ color: '#9CA3AF' }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => {
@@ -375,6 +418,7 @@ export default function BudgetOverview() {
                       try { emit('transactions:changed'); } catch (e) { /* ignore */ }
                       setEditModalVisible(false);
                       setEditingTx(null);
+                      setProcessedParam(null); // Clear processed param so it can be opened again if needed
                     } catch (err) {
                       console.error('Failed to delete transaction', err);
                       const msg = (err as any)?.response?.data?.error || String(err);

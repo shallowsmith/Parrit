@@ -25,6 +25,8 @@ export default function TransactionConfirm() {
     const normalizedCategory = data.category === "misc" ? "Uncategorized" : data.category;
     const [categoryId, setCategoryId] = useState(normalizedCategory || "");
     const [categoryBuckets, setCategoryBuckets] = useState([]);
+    const [paymentType, setPaymentType] = useState("Credit");
+    const paymentTypes = ["Credit", "Debit", "Cash"];
 
     // Load categories
     useEffect(() => {
@@ -139,7 +141,7 @@ export default function TransactionConfirm() {
                 description: description || merchant,
                 dateTime: dateTimeISO,
                 amount: parseFloat(amount),
-                paymentType: "cash", // Default payment type
+                paymentType: paymentType,
                 categoryId: resolvedCategoryId,
                 ...(receiptId && { receiptId }), // Link to receipt if this came from receipt scanning
             };
@@ -207,6 +209,22 @@ export default function TransactionConfirm() {
                     onChangeText={setCategoryId}
                     placeholder="e.g. Groceries"
                 />
+
+                <Text style={styles.label}>Payment Type</Text>
+                <View style={styles.chipsRow}>
+                    {paymentTypes.map((type) => (
+                    <TouchableOpacity key={type} onPress={() => setPaymentType(type)}>
+                        <Text
+                        style={[
+                            styles.chip,
+                            paymentType === type && styles.chipSelected,
+                        ]}
+                        >
+                        {type}
+                        </Text>
+                    </TouchableOpacity>
+                    ))}
+                </View>
 
                 <Text style={styles.label}>Date</Text>
                 <TextInput

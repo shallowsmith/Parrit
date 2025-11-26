@@ -294,12 +294,13 @@ export class ReceiptService {
 
   private extractTotal(text: string): number {
     // Look for total, amount due, balance, or similar patterns
+    // More specific patterns that require proper currency formatting
     const totalPatterns = [
-      /total[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
-      /amount\s+due[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
-      /balance[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
-      /grand\s+total[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
-      /amount[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /total[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /amount\s+due[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /balance[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /grand\s+total[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /subtotal[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
     ];
 
     // Try each pattern in order of priority
@@ -308,19 +309,25 @@ export class ReceiptService {
       if (match) {
         // Remove commas from number (e.g., "1,234.56" -> "1234.56")
         const numStr = match[1].replace(/,/g, '');
-        return parseFloat(numStr);
+        const value = parseFloat(numStr);
+        // Sanity check: receipt total should be reasonable (between $0.01 and $10,000)
+        if (value > 0 && value < 10000) {
+          return value;
+        }
       }
     }
 
-    // Fallback: find the largest dollar amount (likely to be the total)
-    const allAmounts = text.match(/\$?\s*(\d+[,.]?\d*\.?\d{2})/g);
-    if (allAmounts && allAmounts.length > 0) {
-      const amounts = allAmounts.map(a => {
+    // Fallback: find amounts with dollar signs and decimal points (proper currency format)
+    // This excludes receipt numbers, phone numbers, etc.
+    const currencyAmounts = text.match(/\$\s*(\d+(?:,\d{3})*\.?\d{2})/g);
+    if (currencyAmounts && currencyAmounts.length > 0) {
+      const amounts = currencyAmounts.map(a => {
         const cleaned = a.replace(/[$,\s]/g, '');
         return parseFloat(cleaned);
-      }).filter(n => !isNaN(n));
+      }).filter(n => !isNaN(n) && n > 0 && n < 10000); // Reasonable range
 
       if (amounts.length > 0) {
+        // Return the largest reasonable amount
         return Math.max(...amounts);
       }
     }

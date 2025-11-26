@@ -6,6 +6,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppColors } from '@/constants/theme';
 import { Button } from '@/components/ui/Button';
@@ -17,6 +18,7 @@ import { Profile } from '@/types/auth.types';
 import { useGoogleSheetsExport } from '@/hooks/useGoogleSheetsExport';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { user, profile, logout, updateProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -81,10 +83,7 @@ export default function ProfileScreen() {
       {/* View All Receipts Button */}
       <Button
         title="View All Scanned Receipts"
-        onPress={() => {
-          // TODO: Navigate to receipts screen
-          Alert.alert('Scanned Receipts', 'View receipts feature coming soon!');
-        }}
+        onPress={() => router.push('/scanned-receipts')}
         variant="primary"
         style={styles.viewReceiptsButton}
         textStyle={styles.viewReceiptsButtonText}

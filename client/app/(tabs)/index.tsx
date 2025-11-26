@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useLocalSearchParams } from 'expo-router';
 
 import { HelloWave } from '@/components/hello-wave';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
@@ -10,11 +10,13 @@ import { ThemedView } from '@/components/themed-view';
 import BudgetOverview from '@/components/BudgetOverview';
 
 export default function HomeScreen() {
+  const params = useLocalSearchParams();
+
   return (
     <ParallaxScrollView>
       {/* Budget overview + transactions */}
       <ThemedView style={{ marginBottom: 0 }}>
-        <BudgetOverview />
+        <BudgetOverview editTransactionParam={params.editTransaction as string | undefined} />
       </ThemedView>
     </ParallaxScrollView>
   );

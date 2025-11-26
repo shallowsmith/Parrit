@@ -30,6 +30,8 @@ export default function VoiceRecorder() {
   const [parsedPaymentType, setParsedPaymentType] = useState<string | null>(null);
   const [parsedDateISO, setParsedDateISO] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState('uncategorized');
+  const [selectedPaymentType, setSelectedPaymentType] = useState('Credit');
+  const paymentTypes = ['Credit', 'Debit', 'Cash'];
   const [categoryBuckets, setCategoryBuckets] = useState<CategoryChip[]>(() => [
     { id: 'misc', label: 'Misc' },
   ]);
@@ -438,7 +440,7 @@ export default function VoiceRecorder() {
       description: transcription,
       dateTime: parsedDateISO || new Date().toISOString(),
       amount: parsedAmount,
-      paymentType: parsedPaymentType || 'Credit Card',
+      paymentType: selectedPaymentType,
       categoryId: resolvedCategoryId || 'misc',
       assembly: {
         uploadUrl: assemblyUploadUrl,
@@ -511,6 +513,25 @@ export default function VoiceRecorder() {
                   keyboardType="numeric"
                   style={styles.input}
                 />
+
+                <Text style={styles.fieldLabel}>Payment Type</Text>
+                <View style={styles.chipsRow}>
+                  {paymentTypes.map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      onPress={() => setSelectedPaymentType(type)}
+                    >
+                      <Text
+                        style={[
+                          styles.chip,
+                          selectedPaymentType === type ? styles.chipSelected : null,
+                        ]}
+                      >
+                        {type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
                 <Text style={styles.fieldLabel}>Category</Text>
                 <View style={styles.chipsRow}>

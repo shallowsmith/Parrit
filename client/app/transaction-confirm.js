@@ -150,6 +150,9 @@ export default function TransactionConfirm() {
             const result = await transactionService.createTransaction(profile.id, transactionPayload);
             console.log("✅ Transaction created:", result);
 
+            // Show success alert
+            Alert.alert("Saved", "Transaction created, receipt saved successfully");
+
             // Navigate directly to home page, replacing the current screen
             router.replace("/(tabs)");
         } catch (err) {

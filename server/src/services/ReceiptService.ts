@@ -294,12 +294,18 @@ export class ReceiptService {
 
   private extractTotal(text: string): number {
     // Look for total, amount due, balance, or similar patterns
-    // More specific patterns that require proper currency formatting
+    // Patterns with and without dollar signs
     const totalPatterns = [
+      // With dollar sign
       /total[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
       /amount\s+due[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
       /balance[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
       /grand\s+total[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
+      // Without dollar sign (common on many receipts)
+      /\btotal[:\s]+(\d+[,.]?\d*\.?\d{2})\b/i,
+      /\bamount\s+due[:\s]+(\d+[,.]?\d*\.?\d{2})\b/i,
+      /\bbalance[:\s]+(\d+[,.]?\d*\.?\d{2})\b/i,
+      /\bgrand\s+total[:\s]+(\d+[,.]?\d*\.?\d{2})\b/i,
       /subtotal[:\s]*\$\s*(\d+[,.]?\d*\.?\d{2})/i,
     ];
 

@@ -98,7 +98,7 @@ import { useAuth } from "@/contexts/AuthContext";
             <View style={styles.contentContainer}>
                 <View style={styles.headerRow}>
                     <Text style={styles.header}>Scan Your Receipt</Text>
-                    {imageUri && (
+                    {imageUri && !loading && (
                         <TouchableOpacity
                         onPress={() => setImageUri(null)}
                         style={styles.closeButton}

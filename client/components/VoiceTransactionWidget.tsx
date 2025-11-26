@@ -11,7 +11,6 @@ import huggingfaceService from '@/services/huggingface.service';
 import categoryService, { categoryServiceWritable } from '@/services/category.service';
 import categoryPreferencesService from '@/services/categoryPreferences.service';
 import { on , emit } from '@/utils/events';
-import { DEFAULT_NEW_CATEGORY_COLOR } from '@/constants/categoryColors';
 import { extractAmount } from '@/utils/amount';
 import { mapTextToBucketByKeywords } from '@/utils/category';
 
@@ -465,7 +464,7 @@ export default function VoiceRecorder() {
           }
 
           // Category doesn't exist - create it
-          const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
+          const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id });
           const created = createRes.data;
           const createdId = created.id || created._id;
           // Auto-enable newly created category

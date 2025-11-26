@@ -141,7 +141,8 @@ export function getCategoryColor(key: string | undefined | null, categories: any
   if (categories && categories.length) {
     const found = categories.find((c: any) => String(c.id) === String(key) || String(c._id) === String(key) || normalizeCategoryKey(c.name) === norm || normalizeCategoryKey(c.name) === normalizeCategoryKey(String(key || '')) );
     if (found) {
-      if ((found as any).color) return (found as any).color;
+      // Skip the default cyan color - let it fall through to deterministic assignment
+      if ((found as any).color && (found as any).color !== '#06B6D4') return (found as any).color;
       const byName = normalizeCategoryKey(found.name || '');
       if (byName && CATEGORY_COLORS[byName]) return CATEGORY_COLORS[byName];
     }
@@ -169,28 +170,35 @@ export function getCategoryColor(key: string | undefined | null, categories: any
       const baseColorCount = BASE_COLORS.length;
 
       if (categoryIndex < baseColorCount) {
-        // Categories 0-11: Use base colors
+        // Categories 0-17: Use base colors
         return BASE_COLORS[categoryIndex];
       } else if (categoryIndex < baseColorCount * 2) {
-        // Categories 12-23: Use pale variations
+        // Categories 18-35: Use pale variations
         const baseIndex = categoryIndex % baseColorCount;
         return generateColorVariation(BASE_COLORS[baseIndex], 'pale');
       } else if (categoryIndex < baseColorCount * 3) {
-        // Categories 24-35: Use bright variations
+        // Categories 36-53: Use bright variations
         const baseIndex = categoryIndex % baseColorCount;
         return generateColorVariation(BASE_COLORS[baseIndex], 'bright');
       } else {
-        // Categories 36+: Cycle through base colors again
+        // Categories 54+: Cycle through base colors again
         const baseIndex = categoryIndex % baseColorCount;
         return BASE_COLORS[baseIndex];
       }
     }
   }
 
-  // Fallback: Use old behavior for backward compatibility
-  const palette = FALLBACK_COLORS;
+  // Fallback: Use better hash-based color assignment
+  const palette = BASE_COLORS;
   if (typeof fallbackIndex === 'number') return palette[fallbackIndex % palette.length];
+
+  // Create a simple hash from the key string to get consistent but distributed colors
   const s = String(seed || key || '');
-  const idx = Math.abs(s.length) % palette.length;
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  const idx = Math.abs(hash) % palette.length;
   return palette[idx];
 }

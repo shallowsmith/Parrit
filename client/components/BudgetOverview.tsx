@@ -374,6 +374,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                   return custom.map((c: any) => {
                     const id = c.id || c._id;
                     const checked = Boolean(selectedCategoryIds[String(id)] ?? true);
+                    console.log(`[MODAL DEBUG] Getting color for custom category: ${c.name}, id=${id}, total categories=${categories.length}`);
                     const color = getCategoryColor(id, categories);
                     return (
                       <View key={id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>

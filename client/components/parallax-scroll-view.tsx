@@ -9,7 +9,6 @@ import Animated, {
 
 import { ThemedView } from '@/components/themed-view';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useThemeColor } from '@/hooks/use-theme-color';
 
 const HEADER_HEIGHT = 0;
 
@@ -23,7 +22,7 @@ export default function ParallaxScrollView({
   headerImage,
   headerBackgroundColor,
 }: Props) {
-  const backgroundColor = useThemeColor({}, 'background');
+  const backgroundColor = '#151718'; // Force dark background to match transactions page
   const colorScheme = useColorScheme() ?? 'light';
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollOffset = useScrollOffset(scrollRef);
@@ -48,6 +47,7 @@ export default function ParallaxScrollView({
     <Animated.ScrollView
       ref={scrollRef}
       style={{ backgroundColor, flex: 1 }}
+      contentContainerStyle={{ backgroundColor }}
       scrollEventThrottle={16}>
       <Animated.View
         style={[
@@ -57,7 +57,7 @@ export default function ParallaxScrollView({
         ]}>
         {headerImage ? headerImage : null}
       </Animated.View>
-      <ThemedView style={styles.content}>{children}</ThemedView>
+      <ThemedView style={styles.content} lightColor="#151718" darkColor="#151718">{children}</ThemedView>
     </Animated.ScrollView>
   );
 }

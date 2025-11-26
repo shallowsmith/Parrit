@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-    View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, Image, ScrollView, Button, Alert
+    View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Alert
 } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import categoryService, { categoryServiceWritable } from "@/services/category.service";
+import transactionService from "@/services/transaction.service";
 import { DEFAULT_NEW_CATEGORY_COLOR } from "@/constants/categoryColors";
 import { emit } from "@/utils/events";
 
-export default function TransactionConfirm({ route, navigation }) {
-    const { extractedData, backendURL, userId } = route.params;
+export default function TransactionConfirm() {
+    const router = useRouter();
+    const params = useLocalSearchParams();
+    const { extractedData, receiptId } = params;
     const { profile } = useAuth();
 
     const data = extractedData ? JSON.parse(extractedData) : {};
@@ -16,10 +20,11 @@ export default function TransactionConfirm({ route, navigation }) {
     const [merchant, setMerchant] = useState(data.merchant || "");
     const [description, setDescription] = useState(data.description || "");
     const [date, setDate] = useState(data.date || "");
-    const [categoryId, setCategoryId] = useState(data.category || "misc");
-    const [categoryBuckets, setCategoryBuckets] = useState([{ id: "misc", label: "Misc" }]);
-    const [successModalVisible, setSuccessModalVisible] = useState(false);
-    const [receiptImage, setReceiptImage] = useState(null);
+
+    // Normalize category: "misc" -> "Uncategorized"
+    const normalizedCategory = data.category === "misc" ? "Uncategorized" : data.category;
+    const [categoryId, setCategoryId] = useState(normalizedCategory || "");
+    const [categoryBuckets, setCategoryBuckets] = useState([]);
 
     // Load categories
     useEffect(() => {
@@ -28,16 +33,38 @@ export default function TransactionConfirm({ route, navigation }) {
         try {
             const res = await categoryService.getCategories(profile.id);
             const cats = Array.isArray(res.data) ? res.data : [];
-            const mapped = cats.map((c) => ({
+
+            // Remove duplicates by name (case-insensitive)
+            const uniqueCats = cats.reduce((acc, current) => {
+                const existingIndex = acc.findIndex(
+                    item => item.name.toLowerCase() === current.name.toLowerCase()
+                );
+                if (existingIndex === -1) {
+                    acc.push(current);
+                }
+                return acc;
+            }, []);
+
+            const mapped = uniqueCats.map((c) => ({
             id: c.id || c._id,
             label: c.name,
             serverId: c.id || c._id,
             }));
-            const withMisc = [{ id: "misc", label: "Misc" }, ...mapped];
-            if (data.category && !withMisc.find((c) => c.label.toLowerCase() === data.category.toLowerCase())) {
-            withMisc.unshift({ id: "ai", label: `${data.category} (AI Suggested)` });
+
+            // Check if AI-suggested category already exists in user's categories (case-insensitive)
+            const normalizedCat = data.category === "misc" ? "Uncategorized" : data.category;
+            const existingCategory = mapped.find((c) => c.label.toLowerCase() === normalizedCat?.toLowerCase());
+
+            if (existingCategory) {
+                // Use the existing category's label (preserves user's capitalization)
+                setCategoryId(existingCategory.label);
+            } else if (normalizedCat) {
+                // Add AI suggested category if it doesn't exist
+                mapped.unshift({ id: "ai", label: `${normalizedCat} (AI Suggested)` });
+                setCategoryId(`${normalizedCat} (AI Suggested)`);
             }
-            setCategoryBuckets(withMisc);
+
+            setCategoryBuckets(mapped);
         } catch (err) {
             console.warn("Failed to load categories", err);
         }
@@ -45,57 +72,93 @@ export default function TransactionConfirm({ route, navigation }) {
     }, [profile?.id]);
 
     const saveTransaction = async () => {
+        console.log("💾 Save transaction clicked");
+        console.log("Data:", { merchant, amount, categoryId, profile: profile?.id });
+
         if (!merchant || !amount) {
-        Alert.alert("Missing Info", "Please fill in required fields.");
-        return;
+            Alert.alert("Missing Info", "Please fill in required fields.");
+            return;
         }
         try {
-        let resolvedCategory = categoryId;
-        const selected = categoryBuckets.find((c) => c.label === categoryId || c.id === categoryId);
-        if (selected && selected.id !== 'ai') {
-            // Use the actual category ID from the selected bucket
-            resolvedCategoryId = selected.id;
-        } else if (!selected && profile?.id) {
-            // Create new category if it doesn't exist
-            const created = await categoryServiceWritable.createCategory(profile.id, {
-            name: categoryId,
-            type: "expense",
-            userId: profile.id,
-            color: DEFAULT_NEW_CATEGORY_COLOR,
-            });
-            resolvedCategory = created.data.name;
-            emit("categories:changed");
-        }
+            // Resolve category ID
+            let resolvedCategoryId = categoryId;
 
-        // Format date to ISO 8601 datetime string
-        const dateTimeISO = date ? new Date(date).toISOString() : new Date().toISOString();
+            // Remove " (AI Suggested)" suffix if present
+            const cleanCategoryName = categoryId.replace(" (AI Suggested)", "");
 
-        const payload = {
-            merchant,
-            total: parseFloat(amount),
-            description,
-            category: resolvedCategory.replace(" (AI Suggested)", ""),
-            date,
-            receiptImage,
-        };
+            // Try to find the category by label (with or without AI suffix) or by ID
+            const selected = categoryBuckets.find((c) =>
+                c.label === categoryId ||
+                c.label === cleanCategoryName ||
+                c.id === categoryId
+            );
 
-        const res = await fetch(`${backendURL}/api/v1/users/${userId}/receipts`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
+            if (selected && selected.id === 'ai') {
+                // AI suggested category - check if it exists in user's categories
+                const existingCategory = categoryBuckets.find((c) =>
+                    c.label.toLowerCase() === cleanCategoryName.toLowerCase() && c.id !== 'ai'
+                );
 
-        if (!res.ok) throw new Error("Failed to save transaction");
-        setSuccessModalVisible(true);
+                if (existingCategory) {
+                    // Use existing category
+                    resolvedCategoryId = existingCategory.id;
+                } else {
+                    // Create new category from AI suggestion
+                    const created = await categoryServiceWritable.createCategory(profile.id, {
+                        name: cleanCategoryName,
+                        type: "expense",
+                        userId: profile.id,
+                        color: DEFAULT_NEW_CATEGORY_COLOR,
+                    });
+                    resolvedCategoryId = created.data.id || created.data._id;
+                    emit("categories:changed");
+                }
+            } else if (selected) {
+                // Existing category selected
+                resolvedCategoryId = selected.id;
+            } else if (!selected && profile?.id) {
+                // Custom category entered - create it
+                const created = await categoryServiceWritable.createCategory(profile.id, {
+                    name: cleanCategoryName,
+                    type: "expense",
+                    userId: profile.id,
+                    color: DEFAULT_NEW_CATEGORY_COLOR,
+                });
+                resolvedCategoryId = created.data.id || created.data._id;
+                emit("categories:changed");
+            }
+
+            // Format date to ISO 8601 datetime string
+            const dateTimeISO = date ? new Date(date).toISOString() : new Date().toISOString();
+
+            // BOTH FLOWS: Create transaction in MongoDB
+            // Note: Receipt scanning already created the receipt in ReceiptService.processReceipt()
+            const transactionPayload = {
+                userId: profile.id,
+                vendorName: merchant,
+                description: description || merchant,
+                dateTime: dateTimeISO,
+                amount: parseFloat(amount),
+                paymentType: "cash", // Default payment type
+                categoryId: resolvedCategoryId,
+                ...(receiptId && { receiptId }), // Link to receipt if this came from receipt scanning
+            };
+
+            console.log("💾 Creating transaction with payload:", transactionPayload);
+            const result = await transactionService.createTransaction(profile.id, transactionPayload);
+            console.log("✅ Transaction created:", result);
+
+            // Navigate directly to home page, replacing the current screen
+            router.replace("/(tabs)");
         } catch (err) {
-        console.error(err);
-        Alert.alert("Error", err.message);
+            console.error("❌ Error saving transaction:", err);
+            Alert.alert("Error", err.message || "Failed to save transaction");
         }
     };
 
     return (
         <View style={styles.container}>
-        <Modal visible transparent animationType="slide">
+        <Modal visible={true} transparent animationType="slide">
             <View style={styles.overlay}>
             <View style={styles.modalContainer}>
                 <ScrollView>
@@ -153,12 +216,10 @@ export default function TransactionConfirm({ route, navigation }) {
                     placeholder="YYYY-MM-DD"
                 />
 
-                {receiptImage && <Image source={{ uri: receiptImage }} style={styles.preview} />}
-
                 <View style={styles.buttonRow}>
                     <TouchableOpacity
                     style={[styles.button, styles.cancelButton]}
-                    onPress={() => navigation.goBack()}
+                    onPress={() => router.back()}
                     >
                     <Text style={styles.cancelText}>Cancel</Text>
                     </TouchableOpacity>
@@ -170,19 +231,6 @@ export default function TransactionConfirm({ route, navigation }) {
                     </TouchableOpacity>
                 </View>
                 </ScrollView>
-            </View>
-            </View>
-        </Modal>
-
-        {/* ✅ Success Modal */}
-        <Modal visible={successModalVisible} transparent animationType="fade">
-            <View style={styles.overlay}>
-            <View style={styles.successModal}>
-                <Text style={styles.successText}>✅ Transaction saved successfully!</Text>
-                <Button title="OK" onPress={() => {
-                setSuccessModalVisible(false);
-                navigation.navigate("Transactions");
-                }} />
             </View>
             </View>
         </Modal>

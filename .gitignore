@@ -116,3 +116,4 @@ out
 # Firebase credentials
 google-credentials.json
 **/google-credentials.json
+server/vision-credentials.json

@@ -8,7 +8,6 @@ import {
     Alert,
     StyleSheet,
     TouchableOpacity,
-    Modal,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
@@ -19,8 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
     const { profile } = useAuth();
     const [imageUri, setImageUri] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [modalVisible, setModalVisible] = useState(true);
-    const backendURL = "http://172.16.11.179:3000"; // ✅ Replace with your own local IP
+    const backendURL = process.env.EXPO_PUBLIC_API_URL?.replace('/api/v1', '') || "http://localhost:3000";
 
     // Pick receipt image
     const pickImage = async () => {
@@ -48,6 +46,10 @@ import { useAuth } from "@/contexts/AuthContext";
         });
 
         try {
+        // Create AbortController for custom timeout (2 minutes)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
+
         const response = await fetch(
             `${backendURL}/api/v1/users/${profile.id}/receipts/scan`,
             {
@@ -57,18 +59,21 @@ import { useAuth } from "@/contexts/AuthContext";
                 Accept: "application/json",
                 "Content-Type": "multipart/form-data",
             },
+            signal: controller.signal,
             }
         );
+
+        clearTimeout(timeoutId);
 
         const data = await response.json();
         console.log("🧾 Extracted Receipt Data:", data);
 
         if (data.success && data.data) {
-            setModalVisible(false);
             router.push({
             pathname: "/transaction-confirm",
             params: {
                 extractedData: JSON.stringify(data.data),
+                receiptId: data.id, // Pass the receipt ID from backend
                 backendURL,
                 userId: profile.id,
             },
@@ -78,7 +83,11 @@ import { useAuth } from "@/contexts/AuthContext";
         }
         } catch (error) {
         console.error("Upload failed:", error);
-        Alert.alert("Error", "Something went wrong while uploading.");
+        if (error.name === 'AbortError') {
+            Alert.alert("Timeout", "Receipt processing took too long. Please try again or use a simpler receipt.");
+        } else {
+            Alert.alert("Error", "Something went wrong while uploading.");
+        }
         } finally {
         setLoading(false);
         }
@@ -86,17 +95,18 @@ import { useAuth } from "@/contexts/AuthContext";
 
     return (
         <View style={styles.container}>
-        <Modal visible={modalVisible} transparent animationType="slide">
-            <View style={styles.overlay}>
-            <View style={styles.modalContainer}>
-                <TouchableOpacity
-                onPress={() => setModalVisible(false)}
-                style={styles.closeButton}
-                >
-                <Text style={styles.closeText}>✕</Text>
-                </TouchableOpacity>
-
-                <Text style={styles.header}>Scan Your Receipt</Text>
+            <View style={styles.contentContainer}>
+                <View style={styles.headerRow}>
+                    <Text style={styles.header}>Scan Your Receipt</Text>
+                    {imageUri && (
+                        <TouchableOpacity
+                        onPress={() => setImageUri(null)}
+                        style={styles.closeButton}
+                        >
+                        <Text style={styles.closeText}>✕</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
 
                 <TouchableOpacity style={styles.actionButton} onPress={pickImage}>
                 <Text style={styles.actionText}>Pick Receipt Image</Text>
@@ -121,29 +131,33 @@ import { useAuth } from "@/contexts/AuthContext";
                 </View>
                 )}
             </View>
-            </View>
-        </Modal>
         </View>
     );
     }
 
     const styles = StyleSheet.create({
-    container: { flex: 1 },
-    overlay: {
+    container: { flex: 1, backgroundColor: "#000" },
+    contentContainer: {
         flex: 1,
-        backgroundColor: "rgba(0,0,0,0.6)",
         justifyContent: "center",
+        alignItems: "center",
         padding: 20,
     },
-    modalContainer: {
-        backgroundColor: "#000",
-        borderRadius: 12,
-        padding: 16,
+    headerRow: {
+        flexDirection: "row",
         alignItems: "center",
+        justifyContent: "center",
+        width: "100%",
+        marginBottom: 20,
+        position: "relative",
     },
-    closeButton: { position: "absolute", right: 12, top: 12 },
-    closeText: { color: "#9CA3AF", fontSize: 20 },
-    header: { color: "#fff", fontSize: 22, fontWeight: "700", marginBottom: 20 },
+    closeButton: {
+        position: "absolute",
+        right: 0,
+        padding: 8,
+    },
+    closeText: { color: "#9CA3AF", fontSize: 24 },
+    header: { color: "#fff", fontSize: 22, fontWeight: "700" },
     actionButton: {
         backgroundColor: "#2563EB",
         paddingVertical: 12,

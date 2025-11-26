@@ -34,7 +34,8 @@ function initializeFirebaseAdmin() {
 
     // Initialize Firebase Admin
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
+      credential: admin.credential.cert(serviceAccount),
+      storageBucket: 'parrit-fc705.firebasestorage.app'
     });
 
     console.log('Firebase Admin SDK initialized successfully');

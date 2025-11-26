@@ -37,7 +37,11 @@ export async function categorize(text: string): Promise<HuggingFaceResult> {
     const rawText = await res.text();
     if (!res.ok) {
       const snippet = rawText ? rawText.slice(0, 1000) : `status ${res.status}`;
-      return { mapped: 'misc', raw: { status: res.status, body: snippet } } as HuggingFaceResult;
+      console.warn(`HF API error ${res.status}, trying keyword fallback for:`, String(text).slice(0, 200));
+      // Try keyword-based fallback when API fails
+      const keywordMap = mapTextToBucketByKeywords(text);
+      const mapped = keywordMap || 'misc';
+      return { mapped, raw: { status: res.status, body: snippet } } as HuggingFaceResult;
     }
 
     let out: any;
@@ -75,15 +79,38 @@ export async function categorize(text: string): Promise<HuggingFaceResult> {
 function mapTextToBucketByKeywords(text: string): string | null {
   if (!text) return null;
   const t = text.toLowerCase();
-  if (/\b(popcorn|nachos|candy|candybar|concession|soda|soft drink|drink|chips|snack)\b/.test(t)) return 'food';
-  if (/\b(movie|movies|netflix|spotify|concert|theater|theatre|entertainment|game|bar|club|ticket|cinema)\b/.test(t)) return 'entertainment';
-  if (/\b(food|restaurant|coffee|cafe|grocery|groceries|grocer|supermarket|deli|meal|eat|lunch|dinner|breakfast|snack|latte|espresso|burger|pizza|sandwich)\b/.test(t)) return 'food';
-    if (/\b(electric bill|electricity bill|electricity|gas bill|water bill|sewer bill|sewer|sewage|trash bill|garbage bill|trash|garbage|phone bill|internet bill|utility bill)\b/.test(t)) return 'utilities';
-    if (/\b(rent|landlord|apartment|lease|mortgage)\b/.test(t)) return 'rent';
-    if (/\b(utility|utilities|electric|electricity|power|water|water bill|gas|gas bill|sewer|sewage|trash|garbage|internet|phone|bill|service charge)\b/.test(t)) return 'utilities';
-  if (/\b(uber|lyft|taxi|bus|train|metro|transit|transport|rail|gas station|fuel|ride|fare)\b/.test(t)) return 'transportation';
-  if (/\b(flight|airline|hotel|airbnb|travel|delta|expedia|booking)\b/.test(t)) return 'travel';
+
+  // Check food-related keywords FIRST (higher priority)
+  // Strong food indicators - restaurants, grills, cafes, etc.
+  if (/\b(restaurant|grill|cafe|coffee|bistro|eatery|diner|pizzeria|bakery|buffet|steakhouse|seafood)\b/.test(t)) return 'food';
+  if (/\b(food|grocery|groceries|grocer|supermarket|deli|meal|eat|lunch|dinner|breakfast|brunch)\b/.test(t)) return 'food';
+  if (/\b(burger|pizza|sandwich|taco|sushi|pasta|salad|wings|bbq|barbecue)\b/.test(t)) return 'food';
+  if (/\b(popcorn|nachos|candy|candybar|concession|soda|soft drink|chips|snack|latte|espresso)\b/.test(t)) return 'food';
+
+  // Bar & Grill, Sports Bar, etc. should be food (contains both bar + food indicator)
+  if (/\b(bar)\b/.test(t) && /\b(grill|kitchen|restaurant|bistro|tavern|pub|eatery|food)\b/.test(t)) return 'food';
+
+  // Utilities (high priority - specific bill types)
+  if (/\b(electric bill|electricity bill|gas bill|water bill|sewer bill|trash bill|garbage bill|phone bill|internet bill|utility bill)\b/.test(t)) return 'utilities';
+  if (/\b(utility|utilities|electric|electricity|power|water|gas|sewer|sewage|trash|garbage|internet|phone|bill|service charge)\b/.test(t)) return 'utilities';
+
+  // Rent
+  if (/\b(rent|landlord|apartment|lease|mortgage)\b/.test(t)) return 'rent';
+
+  // Transportation
+  if (/\b(uber|lyft|taxi|cab|bus|train|metro|transit|transport|rail|gas station|fuel|ride|fare|parking)\b/.test(t)) return 'transportation';
+
+  // Travel
+  if (/\b(flight|airline|hotel|airbnb|travel|delta|expedia|booking|vacation|resort)\b/.test(t)) return 'travel';
+
+  // Entertainment (check AFTER food to avoid bar ambiguity)
+  if (/\b(movie|movies|netflix|spotify|concert|theater|theatre|entertainment|game|cinema|streaming)\b/.test(t)) return 'entertainment';
+  if (/\b(nightclub|club|lounge|disco)\b/.test(t)) return 'entertainment'; // Pure entertainment venues
+  if (/\b(bar)\b/.test(t)) return 'entertainment'; // Standalone "bar" defaults to entertainment
+
+  // Gifts
   if (/\b(gift|present|donation|charity)\b/.test(t)) return 'gift';
+
   return null;
 }
 

@@ -1,10 +1,10 @@
 import { ImageAnnotatorClient } from "@google-cloud/vision";
 import fs from "fs";
-import path from "path";
-import fetch from "node-fetch";
+import sharp from "sharp";
 import admin from "../config/firebase-admin";
 import { v4 as uuidv4 } from "uuid";
 import { ReceiptValidationError } from "../models/Receipt";
+import HuggingFaceService from "./HuggingFaceService";
 
 // Firestore reference
 const db = admin.firestore();
@@ -93,13 +93,41 @@ export class ReceiptService {
    * ===========================
    * 🔹 DELETE RECEIPT
    * ===========================
+   * Deletes receipt from Firestore and its image from Firebase Storage
    */
   async deleteReceipt(id: string): Promise<boolean> {
     const docRef = receiptsCollection.doc(id);
     const doc = await docRef.get();
     if (!doc.exists) return false;
 
+    const receiptData = doc.data();
+
+    // Delete the image from Firebase Storage if it exists
+    if (receiptData?.imageUrl) {
+      try {
+        // Extract file path from imageUrl
+        // URL format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{path}?alt=media
+        const url = new URL(receiptData.imageUrl);
+        const pathMatch = url.pathname.match(/\/o\/(.+)/);
+
+        if (pathMatch) {
+          const filePath = decodeURIComponent(pathMatch[1]);
+          const bucket = storage.bucket();
+          const file = bucket.file(filePath);
+
+          console.log(`🗑️ Deleting receipt image: ${filePath}`);
+          await file.delete();
+          console.log(`✅ Successfully deleted receipt image from Storage`);
+        }
+      } catch (error) {
+        console.error('Failed to delete receipt image from Storage:', error);
+        // Continue with Firestore deletion even if Storage deletion fails
+      }
+    }
+
+    // Delete the Firestore document
     await docRef.delete();
+    console.log(`✅ Successfully deleted receipt ${id} from Firestore`);
     return true;
   }
 
@@ -109,58 +137,76 @@ export class ReceiptService {
    * ===========================
    * Steps:
    * 1. OCR → Google Vision
-   * 2. Categorize → Hugging Face
+   * 2. Categorize → Hugging Face (with timeout fallback)
    * 3. Upload image → Firebase Storage
    * 4. Save metadata → Firestore
    */
   async processReceipt(userId: string, filePath: string) {
+    const startTime = Date.now();
+    console.log(`⏱️ [RECEIPT] Starting receipt processing for user ${userId}`);
+
     try {
+      // Step 1: Extract text with Google Vision OCR
+      const ocrStart = Date.now();
       const visionClient = new ImageAnnotatorClient({
         keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
       });
 
-      // Step 1: Extract text
       const [result] = await visionClient.textDetection(filePath);
       const detections = result.textAnnotations;
       const fullText = detections?.[0]?.description || "";
+      const ocrDuration = Date.now() - ocrStart;
+      console.log(`✅ [RECEIPT] OCR completed in ${ocrDuration}ms`);
       console.log("🧾 OCR Extracted Text:", fullText.slice(0, 150));
 
       // Step 2: Parse simple data from text
+      const parseStart = Date.now();
       const merchant = this.extractMerchant(fullText);
       const total = this.extractTotal(fullText);
       const date = this.extractDate(fullText);
+      const parseDuration = Date.now() - parseStart;
+      console.log(`✅ [RECEIPT] Text parsing completed in ${parseDuration}ms`);
 
-      // Step 3: Predict category using Hugging Face
-      const hfResponse = await fetch(
-        "https://api-inference.huggingface.co/models/kuro-08/bert-transaction-categorization",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            inputs: `Transaction: Payment at ${merchant} for ${total}`,
-          }),
-        }
-      );
+      // Step 3: Predict category using HuggingFaceService (same as voice transactions)
+      const hfStart = Date.now();
+      console.log("🤖 [RECEIPT] Calling HuggingFace API for categorization...");
+      console.log(`🤖 [RECEIPT] Input: Transaction at ${merchant} for $${total}`);
 
-      let hfData: any;
-      try {
-        hfData = await hfResponse.json();
-      } catch {
-        hfData = [];
+      const categoryResult = await HuggingFaceService.categorize(`${merchant} ${total}`);
+      const category = categoryResult.mapped || "misc";
+
+      const hfDuration = Date.now() - hfStart;
+      console.log(`✅ [RECEIPT] HuggingFace categorization completed in ${hfDuration}ms: ${category}`);
+      if (categoryResult.raw) {
+        console.log("🤖 [RECEIPT] Raw HuggingFace response:", JSON.stringify(categoryResult.raw).slice(0, 200));
       }
 
-      const category =
-        (Array.isArray(hfData)
-          ? (hfData[0]?.label || hfData?.[0]?.[0]?.label)
-          : "Uncategorized") || "Uncategorized";
+      // Step 4: Compress image to reduce upload time
+      const compressStart = Date.now();
+      console.log("🗜️ [RECEIPT] Compressing image...");
 
-      // Step 4: Upload receipt image to Firebase Storage
+      const compressedPath = `${filePath}-compressed.jpg`;
+      await sharp(filePath)
+        .resize(1600, 1600, { // Max 1600x1600, maintains aspect ratio
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({ quality: 85 }) // 85% quality
+        .toFile(compressedPath);
+
+      const originalSize = fs.statSync(filePath).size;
+      const compressedSize = fs.statSync(compressedPath).size;
+      const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+      const compressDuration = Date.now() - compressStart;
+      console.log(`✅ [RECEIPT] Image compressed in ${compressDuration}ms (${originalSize} → ${compressedSize} bytes, ${compressionRatio}% reduction)`);
+
+      // Step 5: Upload compressed image to Firebase Storage
+      const uploadStart = Date.now();
+      console.log("☁️ [RECEIPT] Uploading to Firebase Storage...");
+
       const bucket = storage.bucket();
-      const fileName = `receipts/${userId}/${uuidv4()}${path.extname(filePath)}`;
-      const [uploadedFile] = await bucket.upload(filePath, {
+      const fileName = `receipts/${userId}/${uuidv4()}.jpg`;
+      const [uploadedFile] = await bucket.upload(compressedPath, {
         destination: fileName,
         metadata: {
           metadata: {
@@ -173,10 +219,15 @@ export class ReceiptService {
         uploadedFile.name
       )}?alt=media`;
 
-      // Step 5: Remove local temp file
-      fs.unlinkSync(filePath);
+      const uploadDuration = Date.now() - uploadStart;
+      console.log(`✅ [RECEIPT] Firebase upload completed in ${uploadDuration}ms`);
 
-      // Step 6: Save receipt in Firestore
+      // Step 6: Remove local temp files
+      fs.unlinkSync(filePath);
+      fs.unlinkSync(compressedPath);
+
+      // Step 7: Save receipt in Firestore
+      const firestoreStart = Date.now();
       const receiptData: ReceiptData = {
         userId,
         merchantName: merchant || "Unknown Merchant",
@@ -194,9 +245,43 @@ export class ReceiptService {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      return { success: true, id: docRef.id, data: receiptData };
+      const firestoreDuration = Date.now() - firestoreStart;
+      console.log(`✅ [RECEIPT] Firestore save completed in ${firestoreDuration}ms`);
+
+      const totalDuration = Date.now() - startTime;
+      console.log(`✅ [RECEIPT] Total processing time: ${totalDuration}ms`);
+      console.log(`📊 [RECEIPT] Breakdown: OCR=${ocrDuration}ms, Parse=${parseDuration}ms, HF=${Date.now() - hfStart}ms, Compress=${compressDuration}ms, Upload=${uploadDuration}ms, Firestore=${firestoreDuration}ms`);
+
+      // Return data in format expected by client for transaction confirmation
+      return {
+        success: true,
+        id: docRef.id,
+        data: {
+          merchant: receiptData.merchantName,
+          total: receiptData.amount,
+          date: receiptData.date instanceof Date ? receiptData.date.toISOString() : new Date().toISOString(),
+          category: receiptData.category,
+          description: `Purchase at ${receiptData.merchantName}`,
+          imageUrl: receiptData.imageUrl
+        }
+      };
     } catch (error) {
-      console.error("❌ Receipt processing failed:", error);
+      const totalDuration = Date.now() - startTime;
+      console.error(`❌ [RECEIPT] Processing failed after ${totalDuration}ms:`, error);
+
+      // Clean up temp files if they still exist
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        const compressedPath = `${filePath}-compressed.jpg`;
+        if (fs.existsSync(compressedPath)) {
+          fs.unlinkSync(compressedPath);
+        }
+      } catch (cleanupError) {
+        console.error("Failed to clean up temp files:", cleanupError);
+      }
+
       throw new Error("Failed to process and save receipt");
     }
   }
@@ -208,12 +293,67 @@ export class ReceiptService {
   }
 
   private extractTotal(text: string): number {
-    const match = text.match(/\$?\s?(\d+\.\d{2})/);
-    return match ? parseFloat(match[1]) : 0;
+    // Look for total, amount due, balance, or similar patterns
+    const totalPatterns = [
+      /total[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /amount\s+due[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /balance[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /grand\s+total[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
+      /amount[:\s]*\$?\s*(\d+[,.]?\d*\.?\d{2})/i,
+    ];
+
+    // Try each pattern in order of priority
+    for (const pattern of totalPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        // Remove commas from number (e.g., "1,234.56" -> "1234.56")
+        const numStr = match[1].replace(/,/g, '');
+        return parseFloat(numStr);
+      }
+    }
+
+    // Fallback: find the largest dollar amount (likely to be the total)
+    const allAmounts = text.match(/\$?\s*(\d+[,.]?\d*\.?\d{2})/g);
+    if (allAmounts && allAmounts.length > 0) {
+      const amounts = allAmounts.map(a => {
+        const cleaned = a.replace(/[$,\s]/g, '');
+        return parseFloat(cleaned);
+      }).filter(n => !isNaN(n));
+
+      if (amounts.length > 0) {
+        return Math.max(...amounts);
+      }
+    }
+
+    return 0;
   }
 
   private extractDate(text: string): Date | null {
-    const match = text.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
-    return match ? new Date(match[1]) : null;
+    // Try text-based date formats first (e.g., "June 6, 2025", "January 1, 2024")
+    const monthNames = 'january|february|march|april|may|june|july|august|september|october|november|december';
+    const textDateMatch = text.match(new RegExp(`(${monthNames})\\s+\\d{1,2},?\\s+\\d{4}`, 'i'));
+    if (textDateMatch) {
+      const parsedDate = new Date(textDateMatch[0]);
+      if (!isNaN(parsedDate.getTime())) {
+        // Combine receipt date with current time (time they scanned it)
+        const now = new Date();
+        parsedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+        return parsedDate;
+      }
+    }
+
+    // Try numeric date formats (MM/DD/YYYY, MM-DD-YYYY, etc.)
+    const numericDateMatch = text.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
+    if (numericDateMatch) {
+      const parsedDate = new Date(numericDateMatch[1]);
+      if (!isNaN(parsedDate.getTime())) {
+        // Combine receipt date with current time (time they scanned it)
+        const now = new Date();
+        parsedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+        return parsedDate;
+      }
+    }
+
+    return null;
   }
 }

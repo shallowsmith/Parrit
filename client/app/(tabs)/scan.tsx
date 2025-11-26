@@ -1,26 +1,6 @@
-import { StyleSheet, View } from 'react-native';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import React from 'react';
+import ReceiptScanner from '@/app/receipt-scanner'; 
 
 export default function ScanScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <View style={styles.header}>
-        <ThemedText type="title">Scan</ThemedText>
-      </View>
-      <ThemedText>Scan receipts and documents here.</ThemedText>
-    </ThemedView>
-  );
+  return <ReceiptScanner />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-  },
-  header: {
-    marginBottom: 20,
-    marginTop: 40,
-  },
-});
-

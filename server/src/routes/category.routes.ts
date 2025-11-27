@@ -33,10 +33,10 @@ const categoryService = new CategoryService();
  *               items:
  *                 $ref: '#/components/schemas/Category'
  */
-router.get("/", authenticateToken, requireSameUser('userId'), async (_req: Request, res: Response) => {
+router.get("/", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
-    // Delegate business logic to service layer
-    const categories = await categoryService.getAllCategories();
+    // Delegate business logic to service layer - filter by userId
+    const categories = await categoryService.getCategoriesByUserId(req.params.userId);
 
     // Return successful response with data
     res.json(categories);

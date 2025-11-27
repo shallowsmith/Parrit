@@ -288,11 +288,13 @@ router.delete("/:id", authenticateToken, requireSameUser('userId'), async (req: 
 
 
 router.post('/dedupe', authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
+  console.log('[DEDUPE ROUTE] Received dedupe request for user:', req.params.userId);
   try {
     const result = await categoryService.dedupeCategoriesForUser(req.params.userId);
+    console.log('[DEDUPE ROUTE] Dedupe completed successfully, result:', result);
     res.json({ merged: result });
   } catch (err) {
-    console.error('Failed to dedupe categories', err);
+    console.error('[DEDUPE ROUTE] Failed to dedupe categories', err);
     res.status(500).json({ error: 'Failed to dedupe categories' });
   }
 });

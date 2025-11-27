@@ -1,19 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Button, Alert, StyleSheet, TextInput, ScrollView , Modal, TouchableOpacity } from 'react-native';
-import {
-  useAudioRecorder, useAudioRecorderState,
-  AudioModule, RecordingPresets, setAudioModeAsync
-} from 'expo-audio';
-import Constants from 'expo-constants';
+import { getColorForNewCategory } from '@/constants/categoryColors';
 import { useAuth } from '@/contexts/AuthContext';
-import transactionService from '@/services/transaction.service';
-import huggingfaceService from '@/services/huggingface.service';
 import categoryService, { categoryServiceWritable } from '@/services/category.service';
 import categoryPreferencesService from '@/services/categoryPreferences.service';
-import { on , emit } from '@/utils/events';
+import huggingfaceService from '@/services/huggingface.service';
+import transactionService from '@/services/transaction.service';
 import { extractAmount } from '@/utils/amount';
 import { mapTextToBucketByKeywords } from '@/utils/category';
-import { getColorForNewCategory } from '@/constants/categoryColors';
+import { emit, on } from '@/utils/events';
+import {
+  AudioModule, RecordingPresets, setAudioModeAsync,
+  useAudioRecorder, useAudioRecorderState
+} from 'expo-audio';
+import Constants from 'expo-constants';
+import { useEffect, useState } from 'react';
+import { Alert, Button, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const ASSEMBLYAI_API_KEY: string | undefined = Constants.expoConfig?.extra?.ASSEMBLYAI_API_KEY;
 
@@ -560,7 +560,6 @@ export default function VoiceRecorder() {
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={true}
             >
-              {audioUri && <Text style={styles.uri}>Recorded Audio: {audioUri}</Text>}
 
             {/* Start/Stop control - only show if there's no transcription yet */}
             {!transcription && state.isRecording && (

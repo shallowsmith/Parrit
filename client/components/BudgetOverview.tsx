@@ -48,35 +48,51 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
     if (!profile?.id) return;
     setLoading(true);
     let mounted = true;
-    Promise.all([
-      budgetService.getBudgets(profile.id),
-      transactionService.getTransactions(profile.id),
-      categoryService.getCategories(profile.id),
-      categoryPreferencesService.getCategoryPreferences(profile.id),
-    ])
-      .then(([bRes, tRes, cRes, prefs]) => {
-        if (!mounted) return;
-        const budgets = bRes.data || [];
 
-        // Pick budget for current month
-        const now = new Date();
-        const currentMonth = now.toLocaleString(undefined, { month: 'long' });
-        const currentYear = now.getFullYear();
+    // First, run dedupe to fix any orphaned transactions
+    console.log('[CLIENT DEDUPE] Calling dedupe for user:', profile.id);
+    categoryServiceWritable.dedupeCategories(profile.id)
+      .then((result) => {
+        console.log('[CLIENT DEDUPE] Dedupe completed successfully:', result);
+      })
+      .catch((e) => {
+        console.log('[CLIENT DEDUPE] Error running dedupe:', e);
+        // Continue loading even if dedupe fails
+      })
+      .finally(() => {
+        console.log('[CLIENT DEDUPE] Dedupe finished, now loading data...');
 
-        const currentMonthBudget = budgets.find((b: any) =>
-          b.month === currentMonth && b.year === currentYear
-        );
+        // Then load all data
+        Promise.all([
+          budgetService.getBudgets(profile.id),
+          transactionService.getTransactions(profile.id),
+          categoryService.getCategories(profile.id),
+          categoryPreferencesService.getCategoryPreferences(profile.id),
+        ])
+          .then(([bRes, tRes, cRes, prefs]) => {
+            if (!mounted) return;
+            const budgets = bRes.data || [];
 
-        // If no budget for current month, pick the most recent one
-        const chosen = currentMonthBudget || (budgets.length ? budgets[0] : null);
-        setBudget(chosen);
+            // Pick budget for current month
+            const now = new Date();
+            const currentMonth = now.toLocaleString(undefined, { month: 'long' });
+            const currentYear = now.getFullYear();
 
-        const txs = Array.isArray(tRes.data) ? tRes.data : [];
-        setTransactions(txs);
-        const cats = Array.isArray(cRes.data) ? cRes.data : [];
-        setCategories(cats);
-        setSelectedCategoryIds(prefs);
-        setSelectedGroup(null);
+            const currentMonthBudget = budgets.find((b: any) =>
+              b.month === currentMonth && b.year === currentYear
+            );
+
+            // If no budget for current month, pick the most recent one
+            const chosen = currentMonthBudget || (budgets.length ? budgets[0] : null);
+            setBudget(chosen);
+
+            const txs = Array.isArray(tRes.data) ? tRes.data : [];
+            setTransactions(txs);
+            const cats = Array.isArray(cRes.data) ? cRes.data : [];
+            setCategories(cats);
+            setSelectedCategoryIds(prefs);
+            setSelectedGroup(null);
+          })
       })
       .catch((err) => {
         console.error('Failed to load budgets/transactions', err);
@@ -239,23 +255,33 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
   const visibleTransactions = useMemo(() => {
     const all = transactions || [];
     let res = all.slice();
+    console.log('[FILTER] Starting with', all.length, 'transactions, filters:', filters);
+
     if (filters.startDate) {
       const sd = new Date(filters.startDate).getTime();
       res = res.filter((t) => new Date(t.dateTime || t.createdAt || 0).getTime() >= sd);
+      console.log('[FILTER] After startDate filter:', res.length, 'transactions');
     }
     if (filters.endDate) {
       const ed = new Date(filters.endDate);
       ed.setHours(23, 59, 59, 999);
       const ett = ed.getTime();
       res = res.filter((t) => new Date(t.dateTime || t.createdAt || 0).getTime() <= ett);
+      console.log('[FILTER] After endDate filter:', res.length, 'transactions');
     }
     if (filters.categories && filters.categories.length) {
+      console.log('[FILTER] Filtering by categories:', filters.categories);
       res = res.filter((t) => {
         const key = String(t.categoryId || '').toLowerCase();
-        return filters.categories!.some((cid) => {
+        const matches = filters.categories!.some((cid) => {
           return String(cid) === String(t.categoryId) || String(cid) === String(t.categoryId || t.category || cid) || String(cid).toLowerCase() === String((t.categoryId || '').toLowerCase());
         });
+        if (matches) {
+          console.log(`[FILTER] Transaction MATCHED: vendor=${t.vendorName}, categoryId=${t.categoryId}`);
+        }
+        return matches;
       });
+      console.log('[FILTER] After category filter:', res.length, 'transactions');
     }
     return res;
   }, [transactions, filters]);
@@ -280,11 +306,32 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
   const grouped = useMemo(() => {
     const m = new Map<string, { key: string; label: string; total: number; txs: any[] }>();
     const source = visibleTransactions || [];
+    const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
+
+    console.log('[GROUPING] Starting to group', source.length, 'transactions');
+    console.log('[GROUPING] Available categories:', categories.map((c: any) => ({ id: c.id || c._id, name: c.name })));
+
     source.forEach((tx) => {
-      const key = tx.categoryId || 'misc';
-      const foundCat = categories.find((c: any) => String(c.id) === String(key) || String(c._id) === String(key));
-      const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
-      const label = foundCat ? (capitalize(foundCat.name || 'Misc')) : (tx.vendorName || 'Misc');
+      const rawKey = tx.categoryId || 'misc';
+
+      // Try to find category by ID first, then by name (case-insensitive) for legacy "misc" entries
+      let foundCat = categories.find((c: any) => String(c.id) === String(rawKey) || String(c._id) === String(rawKey));
+      const foundByName = !foundCat && String(rawKey).toLowerCase() === 'misc';
+      if (foundByName) {
+        foundCat = categories.find((c: any) => String(c.name).toLowerCase() === 'misc');
+      }
+
+      // Use category ID if found, otherwise group all uncategorized under 'uncategorized' key
+      const key = foundCat ? (String(foundCat.id || foundCat._id)) : 'uncategorized';
+      const label = foundCat ? capitalize(foundCat.name || 'Misc') : 'Uncategorized';
+
+      // Log all transaction groupings, highlight those found by name
+      if (foundByName) {
+        console.log(`[GROUPING TX - FOUND BY NAME] vendor=${tx.vendorName}, amount=${tx.amount}, rawCategoryId=${rawKey}, foundCat=${foundCat?.name}, groupKey=${key}, groupLabel=${label}, txId=${tx.id || tx._id}`);
+      } else {
+        console.log(`[GROUPING TX] vendor=${tx.vendorName}, amount=${tx.amount}, rawCategoryId=${rawKey}, foundCat=${foundCat?.name}, groupKey=${key}, groupLabel=${label}`);
+      }
+
       const existing = m.get(key);
       const amt = Math.abs(tx.amount || 0);
       if (existing) {
@@ -294,7 +341,10 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
         m.set(key, { key, label, total: amt, txs: [tx] });
       }
     });
-    return Array.from(m.values());
+
+    const result = Array.from(m.values());
+    console.log('[GROUPING] Final groups:', result.map(g => ({ label: g.label, key: g.key, total: g.total, count: g.txs.length })));
+    return result;
   }, [visibleTransactions, categories]);
 
   const totalBudget = budget?.amount ?? 0;
@@ -344,7 +394,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
             <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={styles.filterBarButton}>
               <Text style={styles.filterBarButtonText}>Filter</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setFilters({}); }} style={styles.filterBarClearButton}>
+            <TouchableOpacity onPress={() => { setFilters({}); setSelectedGroup(null); }} style={styles.filterBarClearButton}>
               <Text style={styles.filterBarClearText}>Clear Filters</Text>
             </TouchableOpacity>
           </View>
@@ -355,8 +405,8 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
           onClose={() => setFilterModalVisible(false)}
           categories={categories}
           initial={{ startDate: filters.startDate, endDate: filters.endDate, categories: filters.categories }}
-          onClear={() => { setFilters({}); }}
-          onApply={(f) => { setFilters(f); }}
+          onClear={() => { setFilters({}); setSelectedGroup(null); }}
+          onApply={(f) => { setFilters(f); setSelectedGroup(null); }}
         />
 
         {/* Categories modal */}

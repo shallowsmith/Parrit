@@ -71,9 +71,6 @@ export default function LoginScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.title}>Finance Tracker</Text>
-        <TouchableOpacity style={styles.helpButton}>
-          <Text style={styles.helpIcon}>?</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.form}>
@@ -118,28 +115,7 @@ export default function LoginScreen() {
             )}
           />
 
-          <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
-
           <Button title="Log In" onPress={handleSubmit(onSubmit)} loading={loading} />
-
-          {/* Social login buttons - disabled for now */}
-          <View style={styles.socialButtons}>
-            <Button
-              title="Continue with Google"
-              onPress={() => {}}
-              disabled
-              variant="secondary"
-            />
-            <Button
-              title="Continue with Apple"
-              onPress={() => {}}
-              disabled
-              variant="secondary"
-              style={styles.socialButton}
-            />
-          </View>
 
           <TouchableOpacity
             onPress={() => router.push('/register')}
@@ -176,40 +152,8 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
   },
-  helpButton: {
-    position: 'absolute',
-    right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: AppColors.text,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  helpIcon: {
-    color: AppColors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
   form: {
     gap: 16,
-  },
-  forgotPassword: {
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  forgotPasswordText: {
-    color: AppColors.textSecondary,
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
-  socialButtons: {
-    gap: 12,
-    marginTop: 24,
-  },
-  socialButton: {
-    marginTop: 12,
   },
   signupLink: {
     marginTop: 32,

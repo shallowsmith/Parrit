@@ -50,7 +50,9 @@ export default function TransactionFilter({ visible, onClose, categories = [], i
             <View style={styles.categoriesContainer}>
               {categories.map((c: any) => {
                 const id = c.id || c._id || c.name;
-                const label = (c.name || c.label || id) as string;
+                const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
+                const rawName = c.name || c.label || '';
+                const label = rawName ? capitalize(rawName) : String(id);
                 const checked = selected.has(String(id));
                 return (
                   <TouchableOpacity key={id} onPress={() => toggle(String(id))} style={styles.categoryItem}>

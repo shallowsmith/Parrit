@@ -73,6 +73,7 @@ export class CategoryService {
      * Merge duplicate categories for a user by name (case-insensitive).
      * For each set of duplicates, pick the first as canonical, reassign transactions
      * from duplicates to the canonical category, then remove the duplicates.
+     * Also fixes orphaned transactions (transactions with invalid category IDs).
      * Returns an array of merge results.
      */
     async dedupeCategoriesForUser(userId: string): Promise<Array<{ keepId: string; removedId: string; movedTransactions: number }>> {
@@ -81,6 +82,65 @@ export class CategoryService {
       const { TransactionRepository } = await import('../repositories/TransactionRepository');
       const txRepo = new TransactionRepository();
       const cats = await this.categoryRepository.findByUserId(userId);
+
+      // First, fix orphaned transactions
+      const validCategoryIds = cats.map(c => String(c._id || c.id));
+      let uncategorizedCat = cats.find(c => String(c.name || '').toLowerCase() === 'uncategorized');
+
+      // If no "Uncategorized" category exists, create one
+      if (!uncategorizedCat) {
+        const created = await this.categoryRepository.createCategory({
+          name: 'Uncategorized',
+          type: 'expense',
+          userId,
+          color: '#9CA3AF'
+        });
+        uncategorizedCat = created;
+        validCategoryIds.push(String(created._id || created.id));
+      }
+
+      // Get all transactions and fix orphaned ones, including those with 'misc' string
+      const allTransactions = await txRepo.findByUserId(userId);
+      let orphanedCount = 0;
+      let miscFixedCount = 0;
+      console.log(`[DEDUPE] Found ${allTransactions.length} transactions for user ${userId}`);
+      console.log(`[DEDUPE] Valid category IDs:`, validCategoryIds);
+
+      // Find the Misc category (if it exists)
+      const miscCat = cats.find(c => String(c.name || '').toLowerCase() === 'misc');
+
+      for (const tx of allTransactions) {
+        const txCatId = String(tx.categoryId || '');
+
+        // Fix transactions with string literal 'misc' to use proper Misc category ID
+        if (txCatId.toLowerCase() === 'misc' && miscCat) {
+          const txId = String(tx._id || tx.id);
+          const miscId = String(miscCat._id || miscCat.id);
+          console.log(`[DEDUPE] Found 'misc' string transaction: vendor=${tx.vendorName}, categoryId=${txCatId}, txId=${txId}`);
+          console.log(`[DEDUPE] Updating transaction ${txId} to Misc category ${miscId}`);
+          await txRepo.updateTransaction(txId, {
+            categoryId: miscId
+          });
+          miscFixedCount++;
+          console.log(`[DEDUPE] Fixed 'misc' string transaction ${txId} to Misc category (${miscId})`);
+        }
+        // Fix orphaned transactions (invalid category IDs)
+        else if (txCatId && !validCategoryIds.includes(txCatId)) {
+          console.log(`[DEDUPE] Found orphaned transaction: vendor=${tx.vendorName}, categoryId=${txCatId}, txId=${tx._id || tx.id}`);
+          // This transaction has an invalid category ID - reassign to Uncategorized
+          const txId = String(tx._id || tx.id);
+          const uncatId = String(uncategorizedCat._id || uncategorizedCat.id);
+          console.log(`[DEDUPE] Updating transaction ${txId} to categoryId ${uncatId}`);
+          await txRepo.updateTransaction(txId, {
+            categoryId: uncatId
+          });
+          orphanedCount++;
+          console.log(`[DEDUPE] Reassigned transaction ${txId} to Uncategorized (${uncatId})`);
+        }
+      }
+      console.log(`[DEDUPE] Fixed ${orphanedCount} orphaned transactions and ${miscFixedCount} 'misc' string transactions`);
+
+      // Now dedupe categories
       const groups: Record<string, any[]> = {};
       cats.forEach(c => {
         const key = String(c.name || '').toLowerCase().trim();
@@ -90,6 +150,16 @@ export class CategoryService {
       });
 
       const results: Array<{ keepId: string; removedId: string; movedTransactions: number }> = [];
+
+      // Add orphaned fix result if any
+      if (orphanedCount > 0) {
+        results.push({
+          keepId: String(uncategorizedCat._id || uncategorizedCat.id),
+          removedId: 'orphaned',
+          movedTransactions: orphanedCount
+        });
+      }
+
       for (const key of Object.keys(groups)) {
         const arr = groups[key];
         if (arr.length <= 1) continue;

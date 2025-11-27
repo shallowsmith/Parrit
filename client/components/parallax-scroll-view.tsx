@@ -22,7 +22,7 @@ export default function ParallaxScrollView({
   headerImage,
   headerBackgroundColor,
 }: Props) {
-  const backgroundColor = '#151718'; // Force dark background to match transactions page
+  const backgroundColor = '#000000'; // Black background to match app
   const colorScheme = useColorScheme() ?? 'light';
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollOffset = useScrollOffset(scrollRef);
@@ -57,7 +57,7 @@ export default function ParallaxScrollView({
         ]}>
         {headerImage ? headerImage : null}
       </Animated.View>
-      <ThemedView style={styles.content} lightColor="#151718" darkColor="#151718">{children}</ThemedView>
+      <ThemedView style={styles.content} lightColor="#000000" darkColor="#000000">{children}</ThemedView>
     </Animated.ScrollView>
   );
 }

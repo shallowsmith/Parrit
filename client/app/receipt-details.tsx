@@ -84,7 +84,7 @@ export default function ReceiptDetails() {
             <Text style={styles.backText}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Receipt Details</Text>
-          <View style={{ width: 40 }} />
+          <View style={styles.headerSpacer} />
         </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Receipt not found</Text>
@@ -112,7 +112,7 @@ export default function ReceiptDetails() {
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Receipt Details</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
@@ -196,12 +196,14 @@ export default function ReceiptDetails() {
             </View>
           )}
         </View>
+      </ScrollView>
 
-        {/* Action Button */}
+      {/* Fixed Footer with Action Button */}
+      <View style={styles.footer}>
         <TouchableOpacity style={styles.linkButton} onPress={handleLinkToTransaction}>
           <Text style={styles.linkButtonText}>View Transaction Details</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -236,11 +238,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
   },
+  headerSpacer: {
+    width: 40,
+  },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
     padding: 16,
+    paddingBottom: 100, // Add space for fixed footer
   },
   imageContainer: {
     backgroundColor: '#10130F',
@@ -321,15 +327,26 @@ const styles = StyleSheet.create({
     flex: 2,
     textAlign: 'right',
   },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#000',
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1E1E1E',
+  },
   linkButton: {
     backgroundColor: '#10b981',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginBottom: 32,
   },
   linkButtonText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },

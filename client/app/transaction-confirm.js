@@ -243,8 +243,16 @@ export default function TransactionConfirm() {
         <Modal visible={true} transparent animationType="slide">
             <View style={styles.overlay}>
             <View style={styles.modalContainer}>
-                <ScrollView>
-                <Text style={styles.header}>Confirm Receipt Details</Text>
+                {/* Header with X button */}
+                <View style={styles.headerContainer}>
+                    <View style={styles.headerSpacer} />
+                    <Text style={styles.headerTitle}>Confirm Receipt Details</Text>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
+                        <Text style={styles.closeButtonText}>✕</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <ScrollView contentContainerStyle={styles.scrollContent}>
 
                 <Text style={styles.label}>Merchant</Text>
                 <TextInput style={styles.input} value={merchant} onChangeText={setMerchant} />
@@ -313,22 +321,17 @@ export default function TransactionConfirm() {
                     onChangeText={setDate}
                     placeholder="YYYY-MM-DD"
                 />
+                </ScrollView>
 
-                <View style={styles.buttonRow}>
+                {/* Fixed Footer with Save button */}
+                <View style={styles.footer}>
                     <TouchableOpacity
-                    style={[styles.button, styles.cancelButton]}
-                    onPress={() => router.back()}
-                    >
-                    <Text style={styles.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                    style={[styles.button, styles.confirmButton]}
+                    style={styles.saveButton}
                     onPress={saveTransaction}
                     >
-                    <Text style={styles.confirmText}>Save</Text>
+                    <Text style={styles.saveButtonText}>Save</Text>
                     </TouchableOpacity>
                 </View>
-                </ScrollView>
             </View>
             </View>
         </Modal>
@@ -339,21 +342,54 @@ export default function TransactionConfirm() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 20 },
-    modalContainer: { backgroundColor: "#000", borderRadius: 12, padding: 16, maxHeight: "90%" },
-    header: { color: "#fff", fontSize: 20, fontWeight: "bold", textAlign: "center", marginBottom: 10 },
+    modalContainer: { backgroundColor: "#000", borderRadius: 12, maxHeight: "90%" },
+    headerContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 12,
+        backgroundColor: "#000",
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+    },
+    headerSpacer: { width: 36 },
+    headerTitle: { color: "#fff", fontSize: 18, fontWeight: "700" },
+    closeButton: {
+        width: 36,
+        height: 36,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    closeButtonText: { color: "#fff", fontSize: 24, fontWeight: "300" },
+    scrollContent: { paddingBottom: 100, paddingHorizontal: 16 }, // Add space for fixed footer
     label: { color: "#9CA3AF", fontSize: 12, marginTop: 8, marginBottom: 4 },
     input: { backgroundColor: "#1E1E1E", color: "#fff", borderRadius: 6, padding: 8, borderWidth: 1, borderColor: "#333" },
     chipsRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 6 },
     chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 18, backgroundColor: "#222", color: "#fff", borderWidth: 1, borderColor: "#333", marginRight: 8, marginBottom: 8 },
-    chipSelected: { backgroundColor: "#10b981", borderColor: "#10b981", color: "#072f15" },
+    chipSelected: { backgroundColor: "#10b981", borderColor: "#10b981", color: "#fff" },
     aiChip: { backgroundColor: "#2563EB", borderColor: "#2563EB", color: "#fff" },
     preview: { width: "100%", height: 180, borderRadius: 8, marginTop: 10 },
-    buttonRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 20 },
-    button: { flex: 1, padding: 12, borderRadius: 8, alignItems: "center" },
-    cancelButton: { backgroundColor: "#2A2A2A", marginRight: 8 },
-    confirmButton: { backgroundColor: "#10b981", marginLeft: 8 },
-    cancelText: { color: "#fff", fontWeight: "bold" },
-    confirmText: { color: "#000", fontWeight: "bold" },
+    footer: {
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: "#000",
+        paddingHorizontal: 16,
+        paddingBottom: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: "#1E1E1E",
+    },
+    saveButton: {
+        padding: 12,
+        backgroundColor: "#7DA669",
+        borderRadius: 8,
+        alignItems: "center",
+    },
+    saveButtonText: { color: "#fff", fontWeight: "bold" },
     successModal: { backgroundColor: "#111", padding: 24, borderRadius: 10, alignItems: "center" },
     successText: { color: "#10b981", fontSize: 18, fontWeight: "600", marginBottom: 10 },
 });

@@ -536,53 +536,62 @@ export default function VoiceRecorder() {
     <View style={styles.container}>
       {/* Recording is controlled via the global mic button. Emit 'mic:pressed' to toggle recording. */}
       <Modal visible={widgetModalVisible} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#000000', borderRadius: 12, maxHeight: '90%' }}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            {/* Header with X button */}
             {!state.isRecording && !isProcessing && (
-              <TouchableOpacity onPress={async () => {
-                if (state.isRecording) await stopRecording();
-                setIsProcessing(false);
-                setWidgetModalVisible(false);
-              }} style={{ position: 'absolute', right: 12, top: 12, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                <Text style={{ color: '#9CA3AF', fontSize: 20 }}>✕</Text>
-              </TouchableOpacity>
+              <View style={styles.header}>
+                <View style={styles.headerSpacer} />
+                <Text style={styles.headerTitle}>Confirm Voice Transaction</Text>
+                <TouchableOpacity onPress={async () => {
+                  if (state.isRecording) await stopRecording();
+                  setIsProcessing(false);
+                  setWidgetModalVisible(false);
+                }} style={styles.closeButton}>
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
-            <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={true}>
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={true}
+            >
               {audioUri && <Text style={styles.uri}>Recorded Audio: {audioUri}</Text>}
 
             {/* Start/Stop control - only show if there's no transcription yet */}
             {!transcription && state.isRecording && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center', marginBottom: 12 }}>Recording in progress</Text>
-                <TouchableOpacity onPress={stopRecording} style={{ padding: 12, backgroundColor: '#EF4444', borderRadius: 8, alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Stop Recording</Text>
+              <View style={styles.recordingContainer}>
+                <Text style={styles.recordingText}>Recording in progress</Text>
+                <TouchableOpacity onPress={stopRecording} style={styles.stopButton}>
+                  <Text style={styles.stopButtonText}>Stop Recording</Text>
                 </TouchableOpacity>
               </View>
             )}
 
             {!transcription && !state.isRecording && isProcessing && (
-              <View style={{ marginTop: 12, alignItems: 'center', paddingVertical: 20 }}>
-                <Text style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center' }}>Processing your recording...</Text>
+              <View style={styles.processingContainer}>
+                <Text style={styles.processingText}>Processing your recording...</Text>
               </View>
             )}
 
             {!transcription && !state.isRecording && !isProcessing && (
-              <View style={{ marginTop: 8, marginBottom: 8, alignItems: 'center' }}>
+              <View style={styles.startButtonContainer}>
                 <Button title="Start Recording" onPress={record} />
               </View>
             )}
 
             {!transcription && !state.isRecording && !isProcessing && (
-              <View style={{ paddingVertical: 8, alignItems: 'center' }}>
-                <Text style={{ color: '#9CA3AF', marginBottom: 8 }}>Tap the mic to start recording</Text>
+              <View style={styles.instructionContainer}>
+                <Text style={styles.instructionText}>Tap the mic to start recording</Text>
               </View>
             )}
 
             {transcription && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ fontWeight: 'bold' }}>You said:</Text>
-                <Text style={{ fontSize: 16, marginBottom: 8 }}>{transcription}</Text>
+              <View style={styles.transcriptionContainer}>
+                <Text style={styles.transcriptionLabel}>You said:</Text>
+                <Text style={styles.transcriptionText}>{transcription}</Text>
 
                 {/* Small confirmation form: vendor, amount, category */}
                 <Text style={styles.fieldLabel}>Vendor</Text>
@@ -644,15 +653,15 @@ export default function VoiceRecorder() {
 
                 {/* Modal to edit/delete a category (long-press a chip) */}
                 <Modal visible={categoryModalVisible} transparent animationType="fade">
-                  <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
-                    <View style={{ backgroundColor: '#051218', borderRadius: 12, padding: 16 }}>
-                      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Edit Category</Text>
-                      <TextInput value={editedLabel} onChangeText={setEditedLabel} style={{ backgroundColor: '#000000', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                        <TouchableOpacity onPress={() => { setCategoryModalVisible(false); setActiveCategory(null); }} style={{ padding: 10 }}>
-                          <Text style={{ color: '#9CA3AF' }}>Cancel</Text>
+                  <View style={styles.editCategoryOverlay}>
+                    <View style={styles.editCategoryContainer}>
+                      <Text style={styles.editCategoryTitle}>Edit Category</Text>
+                      <TextInput value={editedLabel} onChangeText={setEditedLabel} style={styles.editCategoryInput} />
+                      <View style={styles.editCategoryButtonRow}>
+                        <TouchableOpacity onPress={() => { setCategoryModalVisible(false); setActiveCategory(null); }} style={styles.editCategoryCancelButton}>
+                          <Text style={styles.editCategoryCancelText}>Cancel</Text>
                         </TouchableOpacity>
-                        <View style={{ flexDirection: 'row' }}>
+                        <View style={styles.editCategoryActionButtons}>
                           <TouchableOpacity onPress={async () => {
                             if (!activeCategory) return;
                             try {
@@ -672,8 +681,8 @@ export default function VoiceRecorder() {
                               setCategoryModalVisible(false);
                               setActiveCategory(null);
                             }
-                          }} style={{ padding: 10, marginRight: 8 }}>
-                            <Text style={{ color: '#EF4444' }}>Delete</Text>
+                          }} style={styles.editCategoryDeleteButton}>
+                            <Text style={styles.editCategoryDeleteText}>Delete</Text>
                           </TouchableOpacity>
                           <TouchableOpacity onPress={async () => {
                             if (!activeCategory) return;
@@ -691,8 +700,8 @@ export default function VoiceRecorder() {
                               setCategoryModalVisible(false);
                               setActiveCategory(null);
                             }
-                          }} style={{ padding: 10, backgroundColor: '#0ea5a7', borderRadius: 8 }}>
-                            <Text style={{ color: '#fff' }}>Save</Text>
+                          }} style={styles.editCategorySaveButton}>
+                            <Text style={styles.editCategorySaveText}>Save</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -707,13 +716,18 @@ export default function VoiceRecorder() {
                   placeholder="e.g. Groceries"
                   style={styles.input}
                 />
-
-                <TouchableOpacity onPress={saveTransaction} style={{ marginTop: 16, padding: 12, backgroundColor: '#7DA669', borderRadius: 8, alignItems: 'center', marginBottom: 24 }}>
-                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Save Transaction</Text>
-                </TouchableOpacity>
               </View>
             )}
             </ScrollView>
+
+            {/* Fixed Footer with Save Transaction button */}
+            {transcription && (
+              <View style={styles.footer}>
+                <TouchableOpacity onPress={saveTransaction} style={styles.saveButton}>
+                  <Text style={styles.saveButtonText}>Save Transaction</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -779,6 +793,53 @@ const sendToAssemblyAI = async (uri: string) => {
 
 const styles = StyleSheet.create({
   container: { gap: 6, marginTop: 6 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#000000',
+    borderRadius: 12,
+    maxHeight: '90%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: '#000000',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  headerSpacer: {
+    width: 36,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  scrollView: {
+    padding: 16,
+  },
+  scrollContent: {
+    paddingBottom: 100,
+  },
   uri: { color: '#666', fontSize: 12 },
   input: {
     borderWidth: 1,
@@ -802,9 +863,137 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   chipSelected: {
-    backgroundColor: '#7DA669',
-    borderColor: '#7DA669',
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
     color: '#fff',
   },
   fieldLabel: { color: '#9CA3AF', fontSize: 12, marginTop: 6, marginBottom: 4 },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#000000',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1E1E1E',
+  },
+  saveButton: {
+    padding: 12,
+    backgroundColor: '#7DA669',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  recordingContainer: {
+    marginTop: 12,
+  },
+  recordingText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  stopButton: {
+    padding: 12,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  stopButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  processingContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  processingText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  startButtonContainer: {
+    marginTop: 8,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  instructionContainer: {
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  instructionText: {
+    color: '#9CA3AF',
+    marginBottom: 8,
+  },
+  transcriptionContainer: {
+    marginTop: 12,
+  },
+  transcriptionLabel: {
+    fontWeight: 'bold',
+  },
+  transcriptionText: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  editCategoryOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  editCategoryContainer: {
+    backgroundColor: '#051218',
+    borderRadius: 12,
+    padding: 16,
+  },
+  editCategoryTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  editCategoryInput: {
+    backgroundColor: '#000000',
+    color: '#fff',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  editCategoryButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  editCategoryCancelButton: {
+    padding: 10,
+  },
+  editCategoryCancelText: {
+    color: '#fff',
+  },
+  editCategoryActionButtons: {
+    flexDirection: 'row',
+  },
+  editCategoryDeleteButton: {
+    padding: 10,
+    marginRight: 8,
+  },
+  editCategoryDeleteText: {
+    color: '#fff',
+  },
+  editCategorySaveButton: {
+    padding: 10,
+    backgroundColor: '#0ea5a7',
+    borderRadius: 8,
+  },
+  editCategorySaveText: {
+    color: '#fff',
+  },
 });

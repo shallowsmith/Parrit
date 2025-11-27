@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Svg, { G, Path } from 'react-native-svg';
 import { pie, arc } from 'd3-shape';
 import { CATEGORY_COLORS, FALLBACK_COLORS, normalizeCategoryKey, getCategoryColor } from '@/constants/categoryColors';
@@ -8,8 +8,8 @@ type Group = { key: string; label: string; total: number; txs: any[] };
 
 export default function BudgetDonut({ grouped, selectedGroup, setSelectedGroup, totalSpent, categories = [] }: { grouped: Group[]; selectedGroup: any; setSelectedGroup: (g: any) => void; totalSpent: number; categories?: any[] }) {
   return (
-    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 240, height: 240, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={styles.outerContainer}>
+      <View style={styles.chartContainer}>
         {totalSpent > 0 ? (
           <Svg width={240} height={240} viewBox="0 0 240 240">
             <G x={120} y={120}>
@@ -33,7 +33,7 @@ export default function BudgetDonut({ grouped, selectedGroup, setSelectedGroup, 
                   return (
                     <Path
                       key={i}
-                      d={pathForRender}
+                      d={pathForRender || undefined}
                       fill={color}
                       stroke="#000000"
                       strokeWidth={isSelected ? 3 : 1}
@@ -45,14 +45,57 @@ export default function BudgetDonut({ grouped, selectedGroup, setSelectedGroup, 
             </G>
           </Svg>
         ) : (
-          <View style={{ width: 200, height: 200, borderRadius: 100, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: '#0ea5a7' }} />
+          <View style={styles.emptyDonut} />
         )}
 
-        <View style={{ position: 'absolute', left: '50%', top: '50%', transform: [{ translateX: -70 }, { translateY: -54 }], width: 140, height: 120, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none">
-          <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{selectedGroup ? `$${(selectedGroup.total || 0).toFixed(2)}` : `$${totalSpent.toFixed(2)}`}</Text>
-          <Text style={{ color: '#9CA3AF', fontSize: 12, marginTop: 8 }}>{selectedGroup ? (selectedGroup.label || 'Category') : 'Spent'}</Text>
+        <View style={styles.centerLabel} pointerEvents="none">
+          <Text style={styles.centerValue}>{selectedGroup ? `$${(selectedGroup.total || 0).toFixed(2)}` : `$${totalSpent.toFixed(2)}`}</Text>
+          <Text style={styles.centerText}>{selectedGroup ? (selectedGroup.label || 'Category') : 'Spent'}</Text>
         </View>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  outerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartContainer: {
+    width: 240,
+    height: 240,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyDonut: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: '#0ea5a7',
+  },
+  centerLabel: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    transform: [{ translateX: -70 }, { translateY: -54 }],
+    width: 140,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerValue: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  centerText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    marginTop: 8,
+  },
+});

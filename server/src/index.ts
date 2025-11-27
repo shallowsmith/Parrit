@@ -42,7 +42,7 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use("/api/v1/profiles", profileRoutes);
 
 // Other routes (currently using in-memory storage)
-app.use("/api/v1/users/:id/budgets", budgetRoutes);
+app.use("/api/v1/users/:userId/budgets", budgetRoutes);
 app.use("/api/v1/users/:userId/categories", categoryRoutes);
 app.use("/api/v1/users/:userId/transactions", transactionRoutes);
 app.use("/api/v1/users/:userId/receipts", receiptRoutes);

@@ -18,8 +18,9 @@ import { emit } from '@/utils/events';
 
 
 export default function BudgetOverview({ editTransactionParam }: { editTransactionParam?: string }) {
-  const { profile } = useAuth();
+  const { profile, refreshToken } = useAuth();
   const router = useRouter();
+
   const [budget, setBudget] = useState<any | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -41,16 +42,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
   const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Record<string, boolean>>({});
-  // Default to current month's date range
-  const [filters, setFilters] = useState<{ startDate?: string; endDate?: string; categories?: string[] }>(() => {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return {
-      startDate: startOfMonth.toISOString(),
-      endDate: endOfMonth.toISOString(),
-    };
-  });
+  const [filters, setFilters] = useState<{ startDate?: string; endDate?: string; categories?: string[] }>({});
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -65,8 +57,18 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
       .then(([bRes, tRes, cRes, prefs]) => {
         if (!mounted) return;
         const budgets = bRes.data || [];
-        // pick the most recent budget
-        const chosen = budgets.length ? budgets[0] : null;
+
+        // Pick budget for current month
+        const now = new Date();
+        const currentMonth = now.toLocaleString(undefined, { month: 'long' });
+        const currentYear = now.getFullYear();
+
+        const currentMonthBudget = budgets.find((b: any) =>
+          b.month === currentMonth && b.year === currentYear
+        );
+
+        // If no budget for current month, pick the most recent one
+        const chosen = currentMonthBudget || (budgets.length ? budgets[0] : null);
         setBudget(chosen);
 
         const txs = Array.isArray(tRes.data) ? tRes.data : [];
@@ -88,7 +90,18 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
       Promise.all([budgetService.getBudgets(profile.id), transactionService.getTransactions(profile.id), categoryService.getCategories(profile.id), categoryPreferencesService.getCategoryPreferences(profile.id)])
         .then(([bRes, tRes, cRes, prefs]) => {
           const budgets = bRes.data || [];
-          const chosen = budgets.length ? budgets[0] : null;
+
+          // Pick budget for current month
+          const now = new Date();
+          const currentMonth = now.toLocaleString(undefined, { month: 'long' });
+          const currentYear = now.getFullYear();
+
+          const currentMonthBudget = budgets.find((b: any) =>
+            b.month === currentMonth && b.year === currentYear
+          );
+
+          // If no budget for current month, pick the most recent one
+          const chosen = currentMonthBudget || (budgets.length ? budgets[0] : null);
           setBudget(chosen);
           const txs = Array.isArray(tRes.data) ? tRes.data : [];
           setTransactions(txs);
@@ -248,6 +261,21 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
 
   const totalSpent = useMemo(() => visibleTransactions.reduce((s, t) => s + (t.amount || 0), 0), [visibleTransactions]);
 
+  // Calculate current month's spending for budget display (always current month, regardless of filters)
+  const currentMonthSpent = useMemo(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    return transactions
+      .filter((t) => {
+        const txDate = new Date(t.dateTime || t.createdAt || 0);
+        return txDate >= startOfMonth && txDate <= endOfMonth;
+      })
+      .reduce((s, t) => s + (t.amount || 0), 0);
+  }, [transactions]);
+
   const grouped = useMemo(() => {
     const m = new Map<string, { key: string; label: string; total: number; txs: any[] }>();
     const source = visibleTransactions || [];
@@ -269,8 +297,8 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
   }, [visibleTransactions, categories]);
 
   const totalBudget = budget?.amount ?? 0;
-  // Always compute remaining from the budget total minus what has been spent so it stays in sync
-  const remaining = totalBudget - totalSpent;
+  // Always compute remaining from the budget total minus current month's spending
+  const remaining = totalBudget - currentMonthSpent;
 
   return (
     <ThemedView style={styles.container}>
@@ -286,7 +314,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
             setEditBudgetModalVisible(true);
           }}
         >
-          <Text style={styles.smallText}>Total Budget</Text>
+          <Text style={styles.smallText}>This Month's Budget</Text>
           <Text style={styles.largeText}>${totalBudget.toFixed(2)}</Text>
         </TouchableOpacity>
         <View style={styles.rightBox}>
@@ -304,19 +332,19 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
         </View>
 
         {/* Filter bar (below donut) */}
-        <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity onPress={() => setCategoriesModalVisible(true)} style={{ padding: 8, marginRight: 16 }}>
-              <Text style={{ color: '#60A5FA' }}>Categories</Text>
+        <View style={styles.filterBar}>
+          <View style={styles.filterBarLeft}>
+            <TouchableOpacity onPress={() => setCategoriesModalVisible(true)} style={styles.filterBarButton}>
+              <Text style={styles.filterBarButtonText}>Categories</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={{ padding: 8, marginRight: 16 }}>
-              <Text style={{ color: '#60A5FA' }}>Filter</Text>
+          <View style={styles.filterBarRight}>
+            <TouchableOpacity onPress={() => setFilterModalVisible(true)} style={styles.filterBarButton}>
+              <Text style={styles.filterBarButtonText}>Filter</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setFilters({}); }} style={{ padding: 8 }}>
-              <Text style={{ color: '#9CA3AF' }}>Clear Filters</Text>
+            <TouchableOpacity onPress={() => { setFilters({}); }} style={styles.filterBarClearButton}>
+              <Text style={styles.filterBarClearText}>Clear Filters</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -332,21 +360,21 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
 
         {/* Categories modal */}
         <Modal visible={categoriesModalVisible} transparent animationType="slide">
-          <View style={{ flex: 1, backgroundColor: 'rgba(16, 19, 15, 0.3)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#000000', padding: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '80%' }}>
-              <View style={{ paddingHorizontal: 8 }}>
-                <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>Categories</Text>
+          <View style={styles.categoriesModalOverlay}>
+            <View style={styles.categoriesModalContainer}>
+              <View style={styles.categoriesModalHeader}>
+                <Text style={styles.categoriesModalTitle}>Categories</Text>
               </View>
               {/* Close button (X) in top-right of the modal */}
               <TouchableOpacity onPress={() => {
                 setCategoriesModalVisible(false);
                 emit('categories:changed'); // Trigger reload in other components
-              }} style={{ position: 'absolute', right: 16, top: 16, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel="Close categories">
-                <Text style={{ color: '#9CA3AF', fontSize: 20 }}>✕</Text>
+              }} style={styles.categoriesModalCloseButton} accessibilityLabel="Close categories">
+                <Text style={styles.categoriesModalCloseText}>✕</Text>
               </TouchableOpacity>
-              <ScrollView style={{ marginTop: 6 }} contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 32 }}>
+              <ScrollView style={styles.categoriesModalScrollView} contentContainerStyle={styles.categoriesModalScrollContent}>
                 {/* Default categories */}
-                <Text style={{ color: '#9CA3AF', marginTop: 6, marginBottom: 6 }}>Default Categories</Text>
+                <Text style={styles.categoriesSectionTitle}>Default Categories</Text>
                 {(() => {
                   const defaults = ['Food','Groceries','Rent','Utilities','Transportation','Entertainment','Travel','Gifts','Misc'];
                   return defaults.map((dn) => {
@@ -355,10 +383,10 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                     const checked = Boolean(selectedCategoryIds[String(id)] ?? true);
                     const color = getCategoryColor(id, categories);
                     return (
-                      <View key={`def-${dn}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                          <View style={{ width: 6, height: 34, borderRadius: 3, backgroundColor: color, marginRight: 12 }} />
-                          <Text style={{ color: '#fff', fontSize: 16 }}>{dn}</Text>
+                      <View key={`def-${dn}`} style={styles.categoryRow}>
+                        <View style={styles.categoryRowLeft}>
+                          <View style={[styles.categoryColorBar, { backgroundColor: color }]} />
+                          <Text style={styles.categoryName}>{dn}</Text>
                         </View>
                         <TouchableOpacity onPress={async () => {
                           const newPrefs = { ...selectedCategoryIds, [String(id)]: !checked };
@@ -366,8 +394,8 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                           if (profile?.id) {
                             await categoryPreferencesService.saveCategoryPreferences(profile.id, newPrefs);
                           }
-                        }} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: checked ? '#7DA669' : '#4B5563' }}>
-                          {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
+                        }} style={[styles.categoryCheckbox, checked ? styles.categoryCheckboxChecked : styles.categoryCheckboxUnchecked]}>
+                          {checked ? <Text style={styles.categoryCheckmark}>✓</Text> : null}
                         </TouchableOpacity>
                       </View>
                     );
@@ -375,21 +403,21 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                 })()}
 
                 {/* Custom categories */}
-                <Text style={{ color: '#9CA3AF', marginTop: 12, marginBottom: 6 }}>Custom Categories</Text>
+                <Text style={styles.categoriesCustomSectionTitle}>Custom Categories</Text>
                 {(() => {
                   const defaultsSet = new Set(['food','groceries','rent','utilities','transportation','entertainment','travel','gifts','misc']);
                   const custom = (categories || []).filter((c: any) => !defaultsSet.has(String(c.name || '').toLowerCase()));
-                  if (!custom.length) return <Text style={{ color: '#9CA3AF', marginTop: 12 }}>No custom categories</Text>;
+                  if (!custom.length) return <Text style={styles.noCategoriesText}>No custom categories</Text>;
                   return custom.map((c: any) => {
                     const id = c.id || c._id;
                     const checked = Boolean(selectedCategoryIds[String(id)] ?? true);
                     console.log(`[MODAL DEBUG] Getting color for custom category: ${c.name}, id=${id}, total categories=${categories.length}`);
                     const color = getCategoryColor(id, categories);
                     return (
-                      <View key={id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                          <View style={{ width: 6, height: 34, borderRadius: 3, backgroundColor: color, marginRight: 12 }} />
-                          <Text style={{ color: '#fff', fontSize: 16 }}>{c.name}</Text>
+                      <View key={id} style={styles.categoryRow}>
+                        <View style={styles.categoryRowLeft}>
+                          <View style={[styles.categoryColorBar, { backgroundColor: color }]} />
+                          <Text style={styles.categoryName}>{c.name}</Text>
                         </View>
                         <TouchableOpacity onPress={async () => {
                           const newPrefs = { ...selectedCategoryIds, [String(id)]: !checked };
@@ -397,16 +425,16 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                           if (profile?.id) {
                             await categoryPreferencesService.saveCategoryPreferences(profile.id, newPrefs);
                           }
-                        }} style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: checked ? '#7DA669' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: checked ? '#7DA669' : '#4B5563' }}>
-                          {checked ? <Text style={{ color: '#072f15', fontWeight: '700' }}>✓</Text> : null}
+                        }} style={[styles.categoryCheckbox, checked ? styles.categoryCheckboxChecked : styles.categoryCheckboxUnchecked]}>
+                          {checked ? <Text style={styles.categoryCheckmark}>✓</Text> : null}
                         </TouchableOpacity>
                       </View>
                     );
                   });
                 })()}
 
-                <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center' }}>
-                  <TextInput value={newCategoryInput} onChangeText={setNewCategoryInput} placeholder="Add new category" placeholderTextColor="#9CA3AF" style={{ flex: 1, backgroundColor: '#0b1518', padding: 12, borderRadius: 8, color: '#fff' }} />
+                <View style={styles.addCategoryContainer}>
+                  <TextInput value={newCategoryInput} onChangeText={setNewCategoryInput} placeholder="Add new category" placeholderTextColor="#9CA3AF" style={styles.addCategoryInput} />
                   <TouchableOpacity onPress={async () => {
                     const raw = String(newCategoryInput || '').trim();
                     if (!raw) return;
@@ -422,11 +450,11 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                       console.error('Failed to create category from modal', err);
                       Alert.alert('Create failed', (err as any)?.response?.data?.error || String(err));
                     }
-                  }} style={{ marginLeft: 8, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#10B981', borderRadius: 8 }}>
-                    <Text style={{ color: '#072f15', fontWeight: '700' }}>Add</Text>
+                  }} style={styles.addCategoryButton}>
+                    <Text style={styles.addCategoryButtonText}>Add</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={{ height: 16 }} />
+                <View style={styles.addCategorySpacer} />
               </ScrollView>
             </View>
           </View>
@@ -437,29 +465,29 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
 
       {/* Edit transaction modal */}
       <Modal visible={editModalVisible} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#000000', borderRadius: 12, padding: 16 }}>
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Edit Transaction</Text>
-            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Vendor</Text>
-            <TextInput value={editVendor} onChangeText={setEditVendor} style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
-            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Description</Text>
-            <TextInput value={editDescription} onChangeText={setEditDescription} style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
-            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Amount</Text>
-            <TextInput value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
-            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Payment Type</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 }}>
+        <View style={styles.editModalOverlay}>
+          <View style={styles.editModalContainer}>
+            <Text style={styles.editModalTitle}>Edit Transaction</Text>
+            <Text style={styles.editModalLabel}>Vendor</Text>
+            <TextInput value={editVendor} onChangeText={setEditVendor} style={styles.editModalInput} />
+            <Text style={styles.editModalLabel}>Description</Text>
+            <TextInput value={editDescription} onChangeText={setEditDescription} style={styles.editModalInput} />
+            <Text style={styles.editModalLabel}>Amount</Text>
+            <TextInput value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" style={styles.editModalInput} />
+            <Text style={styles.editModalLabel}>Payment Type</Text>
+            <View style={styles.editModalChipsRow}>
               {paymentTypes.map((type) => (
-                <TouchableOpacity key={type} onPress={() => setEditPaymentType(type)} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 18, backgroundColor: editPaymentType === type ? '#10b981' : '#222', borderWidth: 1, borderColor: editPaymentType === type ? '#10b981' : '#333', marginRight: 8, marginBottom: 8 }}>
-                  <Text style={{ color: editPaymentType === type ? '#072f15' : '#fff' }}>{type}</Text>
+                <TouchableOpacity key={type} onPress={() => setEditPaymentType(type)} style={[styles.editModalChip, editPaymentType === type ? styles.editModalChipSelected : styles.editModalChipUnselected]}>
+                  <Text style={editPaymentType === type ? styles.editModalChipTextSelected : styles.editModalChipTextUnselected}>{type}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Category (name or id)</Text>
-            <TextInput value={editCategoryInput} onChangeText={setEditCategoryInput} placeholder="e.g. Groceries" style={{ backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
+            <Text style={styles.editModalLabel}>Category (name or id)</Text>
+            <TextInput value={editCategoryInput} onChangeText={setEditCategoryInput} placeholder="e.g. Groceries" style={styles.editModalInput} />
 
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditingTx(null); setProcessedParam(null); }} style={{ padding: 10, marginRight: 8 }}>
-                <Text style={{ color: '#9CA3AF' }}>Cancel</Text>
+            <View style={styles.editModalButtonRow}>
+              <TouchableOpacity onPress={() => { setEditModalVisible(false); setEditingTx(null); setProcessedParam(null); }} style={styles.editModalCancelButton}>
+                <Text style={styles.editModalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => {
                 if (!editingTx) return;
@@ -483,11 +511,11 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                     }
                   } }
                 ]);
-              }} style={{ padding: 10, marginRight: 8 }}>
-                <Text style={{ color: '#EF4444' }}>Delete</Text>
+              }} style={styles.editModalDeleteButton}>
+                <Text style={styles.editModalDeleteText}>Delete</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={saveEditedTransaction} style={{ padding: 10, backgroundColor: '#7DA669', borderRadius: 8 }}>
-                <Text style={{ color: '#fff' }}>Save</Text>
+              <TouchableOpacity onPress={saveEditedTransaction} style={styles.editModalSaveButton}>
+                <Text style={styles.editModalSaveText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -496,19 +524,19 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
 
       {/* Budget edit modal */}
       <Modal visible={editBudgetModalVisible} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#051218', borderRadius: 12, padding: 16 }}>
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Edit Budget</Text>
-            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Total amount</Text>
-            <TextInput value={editBudgetAmount} onChangeText={setEditBudgetAmount} keyboardType="numeric" style={{ backgroundColor: '#000000', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 }} />
-            <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Remaining / Balance</Text>
-            <View style={{ backgroundColor: '#000000', padding: 10, borderRadius: 8, marginBottom: 12 }}>
-              <Text style={{ color: '#fff' }}>{editBudgetRemaining}</Text>
+        <View style={styles.budgetModalOverlay}>
+          <View style={styles.budgetModalContainer}>
+            <Text style={styles.budgetModalTitle}>Edit Budget</Text>
+            <Text style={styles.budgetModalLabel}>Total amount</Text>
+            <TextInput value={editBudgetAmount} onChangeText={setEditBudgetAmount} keyboardType="numeric" style={styles.budgetModalInput} />
+            <Text style={styles.budgetModalLabel}>Remaining / Balance</Text>
+            <View style={styles.budgetModalRemainingContainer}>
+              <Text style={styles.budgetModalRemainingText}>{editBudgetRemaining}</Text>
             </View>
 
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <TouchableOpacity onPress={() => { setEditBudgetModalVisible(false); }} style={{ padding: 10, marginRight: 8 }}>
-                <Text style={{ color: '#9CA3AF' }}>Cancel</Text>
+            <View style={styles.budgetModalButtonRow}>
+              <TouchableOpacity onPress={() => { setEditBudgetModalVisible(false); }} style={styles.budgetModalCancelButton}>
+                <Text style={styles.budgetModalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={async () => {
                 const parsedAmount = Number(editBudgetAmount);
@@ -517,7 +545,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                   if (profile?.id) {
                     if (budget && (budget.id || budget._id)) {
                       const bid = budget.id || budget._id;
-                      const remainingCalc = Math.max(0, parsedAmount - totalSpent);
+                      const remainingCalc = Math.max(0, parsedAmount - currentMonthSpent);
                       const res = await budgetService.updateBudget(profile.id, bid, { amount: parsedAmount, remaining: remainingCalc });
                       const updated = res.data || res;
                       setBudget(updated);
@@ -525,7 +553,7 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                       const now = new Date();
                       const month = now.toLocaleString(undefined, { month: 'long' });
                       const year = now.getFullYear();
-                      const remainingCalc = Math.max(0, parsedAmount - totalSpent);
+                      const remainingCalc = Math.max(0, parsedAmount - currentMonthSpent);
                       const res = await budgetService.createBudget(profile.id, { userId: profile.id, month, year, amount: parsedAmount, remaining: remainingCalc });
                       const created = res.data || res;
                       setBudget(created);
@@ -534,11 +562,14 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                   setEditBudgetModalVisible(false);
                 } catch (err) {
                   console.error('Failed to update/create budget', err);
-                  const msg = (err as any)?.response?.data?.error || String(err);
-                  Alert.alert('Save failed', msg);
+                  const errorDetails = (err as any)?.response?.data;
+                  const errorMsg = errorDetails?.error || errorDetails?.message || String(err);
+                  const statusCode = (err as any)?.response?.status;
+                  console.error('Error details:', { statusCode, errorDetails });
+                  Alert.alert('Save failed', `${errorMsg}${statusCode ? ` (${statusCode})` : ''}`);
                 }
-              }} style={{ padding: 10, backgroundColor: '#7DA669', borderRadius: 8 }}>
-                <Text style={{ color: '#fff' }}>Save</Text>
+              }} style={styles.budgetModalSaveButton}>
+                <Text style={styles.budgetModalSaveText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -583,4 +614,69 @@ const styles = StyleSheet.create({
   txRight: { alignItems: 'flex-end', marginLeft: 12 },
   txAmount: { color: '#fff', fontSize: 16, fontWeight: '700' },
   txTime: { color: '#9CA3AF', fontSize: 12, marginTop: 4 },
+  // Filter bar styles
+  filterBar: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 12 },
+  filterBarLeft: { flexDirection: 'row', alignItems: 'center' },
+  filterBarRight: { flexDirection: 'row', alignItems: 'center' },
+  filterBarButton: { padding: 8, marginRight: 16 },
+  filterBarButtonText: { color: '#fff' },
+  filterBarClearButton: { padding: 8 },
+  filterBarClearText: { color: '#fff' },
+  // Categories modal styles
+  categoriesModalOverlay: { flex: 1, backgroundColor: 'rgba(16, 19, 15, 0.3)', justifyContent: 'flex-end' },
+  categoriesModalContainer: { backgroundColor: '#000000', padding: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '80%' },
+  categoriesModalHeader: { paddingHorizontal: 8 },
+  categoriesModalTitle: { color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 },
+  categoriesModalCloseButton: { position: 'absolute', right: 16, top: 16, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  categoriesModalCloseText: { color: '#fff', fontSize: 20 },
+  categoriesModalScrollView: { marginTop: 6 },
+  categoriesModalScrollContent: { paddingHorizontal: 8, paddingBottom: 32 },
+  categoriesSectionTitle: { color: '#9CA3AF', marginTop: 6, marginBottom: 6 },
+  categoriesCustomSectionTitle: { color: '#9CA3AF', marginTop: 12, marginBottom: 6 },
+  categoryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
+  categoryRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  categoryColorBar: { width: 6, height: 34, borderRadius: 3, marginRight: 12 },
+  categoryName: { color: '#fff', fontSize: 16 },
+  categoryCheckbox: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  categoryCheckboxChecked: { backgroundColor: '#7DA669', borderColor: '#7DA669' },
+  categoryCheckboxUnchecked: { backgroundColor: 'transparent', borderColor: '#4B5563' },
+  categoryCheckmark: { color: '#fff', fontWeight: '700' },
+  noCategoriesText: { color: '#9CA3AF', marginTop: 12 },
+  addCategoryContainer: { marginTop: 12, flexDirection: 'row', alignItems: 'center' },
+  addCategoryInput: { flex: 1, backgroundColor: '#0b1518', padding: 12, borderRadius: 8, color: '#fff' },
+  addCategoryButton: { marginLeft: 8, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#10B981', borderRadius: 8 },
+  addCategoryButtonText: { color: '#fff', fontWeight: '700' },
+  addCategorySpacer: { height: 16 },
+  // Edit transaction modal styles
+  editModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  editModalContainer: { backgroundColor: '#000000', borderRadius: 12, padding: 16 },
+  editModalTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  editModalLabel: { color: '#9CA3AF', fontSize: 12, marginBottom: 6 },
+  editModalInput: { backgroundColor: '#111310', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 },
+  editModalChipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
+  editModalChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, marginRight: 8, marginBottom: 8 },
+  editModalChipSelected: { backgroundColor: '#10b981', borderColor: '#10b981' },
+  editModalChipUnselected: { backgroundColor: '#222', borderColor: '#333' },
+  editModalChipTextSelected: { color: '#fff' },
+  editModalChipTextUnselected: { color: '#fff' },
+  editModalButtonRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  editModalCancelButton: { padding: 10, marginRight: 8 },
+  editModalCancelText: { color: '#fff' },
+  editModalDeleteButton: { padding: 10, marginRight: 8 },
+  editModalDeleteText: { color: '#fff' },
+  editModalSaveButton: { padding: 10, backgroundColor: '#7DA669', borderRadius: 8 },
+  editModalSaveText: { color: '#fff' },
+  // Budget edit modal styles
+  budgetModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  budgetModalContainer: { backgroundColor: '#051218', borderRadius: 12, padding: 16 },
+  budgetModalTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  budgetModalLabel: { color: '#9CA3AF', fontSize: 12, marginBottom: 6 },
+  budgetModalInput: { backgroundColor: '#000000', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 12 },
+  budgetModalRemainingContainer: { backgroundColor: '#000000', padding: 10, borderRadius: 8, marginBottom: 12 },
+  budgetModalRemainingText: { color: '#fff' },
+  budgetModalButtonRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  budgetModalCancelButton: { padding: 10, marginRight: 8 },
+  budgetModalCancelText: { color: '#fff' },
+  budgetModalSaveButton: { padding: 10, backgroundColor: '#7DA669', borderRadius: 8 },
+  budgetModalSaveText: { color: '#fff' },
 });

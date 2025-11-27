@@ -15,7 +15,7 @@ export default function HomeScreen() {
   return (
     <ParallaxScrollView>
       {/* Budget overview + transactions */}
-      <ThemedView style={{ marginBottom: 0 }}>
+      <ThemedView style={styles.budgetContainer}>
         <BudgetOverview editTransactionParam={params.editTransaction as string | undefined} />
       </ThemedView>
     </ParallaxScrollView>
@@ -23,6 +23,9 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  budgetContainer: {
+    marginBottom: 0,
+  },
   titleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   stepContainer: { gap: 8, marginBottom: 8 },
   reactLogo: { height: 178, width: 290, bottom: 0, left: 0, position: 'absolute' },

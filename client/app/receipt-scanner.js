@@ -159,7 +159,7 @@ import { useAuth } from "@/contexts/AuthContext";
     closeText: { color: "#9CA3AF", fontSize: 24 },
     header: { color: "#fff", fontSize: 22, fontWeight: "700" },
     actionButton: {
-        backgroundColor: "#2563EB",
+        backgroundColor: "#7DA669",
         paddingVertical: 12,
         paddingHorizontal: 20,
         borderRadius: 10,
@@ -180,7 +180,7 @@ import { useAuth } from "@/contexts/AuthContext";
         width: "100%",
         alignItems: "center",
     },
-    uploadText: { color: "#000", fontWeight: "bold" },
+    uploadText: { color: "#fff", fontWeight: "bold" },
     loadingContainer: { marginTop: 20, alignItems: "center" },
     loadingText: { color: "#9CA3AF", marginTop: 8 },
 });

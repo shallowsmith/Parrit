@@ -40,10 +40,10 @@ const budgetService = new BudgetService();
  *             schema:
  *               $ref: '#/components/schemas/UnauthorizedError'
  */
-router.get("/", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
+router.get("/", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Get userId from path parameter
-    const userId = req.params.id;
+    const userId = req.params.userId;
 
     // Delegate business logic to service layer
     const budgets = await budgetService.getBudgetsByUserId(userId);
@@ -106,7 +106,7 @@ router.get("/", authenticateToken, requireSameUser('id'), async (req: Request, r
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/:id", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
+router.get("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Extract ID from URL parameter
     const budget = await budgetService.getBudgetById(req.params.id);
@@ -197,7 +197,7 @@ router.get("/:id", authenticateToken, requireSameUser('id'), async (req: Request
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
+router.post("/", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Pass request body to service for validation and creation
     const budget = await budgetService.createBudget(req.body);
@@ -287,7 +287,7 @@ router.post("/", authenticateToken, requireSameUser('id'), async (req: Request, 
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.put("/:id", authenticateToken, requireSameUser('id'), async (req: Request, res: Response) => {
+router.put("/:id", authenticateToken, requireSameUser('userId'), async (req: Request, res: Response) => {
   try {
     // Pass ID and request body to service for validation and update
     const budget = await budgetService.updateBudget(req.params.id, req.body);

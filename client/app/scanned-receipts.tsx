@@ -113,7 +113,7 @@ export default function ScannedReceipts() {
             <Text style={styles.backText}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Scanned Receipts</Text>
-          <View style={{ width: 40 }} />
+          <View style={styles.headerSpacer} />
         </View>
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No scanned receipts yet</Text>
@@ -130,7 +130,7 @@ export default function ScannedReceipts() {
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Scanned Receipts</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
@@ -212,6 +212,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     fontWeight: '700',
+  },
+  headerSpacer: {
+    width: 40,
   },
   scrollView: {
     flex: 1,

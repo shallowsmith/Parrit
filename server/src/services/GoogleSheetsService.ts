@@ -216,6 +216,23 @@ export class GoogleSheetsService {
               fields: 'pixelSize',
             },
           },
+          // Enable text wrapping for Vendor column (B)
+          {
+            repeatCell: {
+              range: {
+                sheetId: 0,
+                startRowIndex: 1,
+                startColumnIndex: 1, // Column B (Vendor)
+                endColumnIndex: 2,
+              },
+              cell: {
+                userEnteredFormat: {
+                  wrapStrategy: 'WRAP',
+                },
+              },
+              fields: 'userEnteredFormat.wrapStrategy',
+            },
+          },
           // Enable text wrapping for Description column (C)
           {
             repeatCell: {

@@ -53,12 +53,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (user && !isRegistering) {
         try {
+          // Force token refresh to ensure we have the latest custom claims (userId)
+          console.log('[AuthContext] Refreshing token to get latest claims...');
+          await user.getIdToken(true);
+
           // Check if user has profile in backend
           console.log('[AuthContext] Checking login status with backend...');
           const response = await authService.checkLoginStatus();
 
           if (response.status === 200) {
             console.log('[AuthContext] User authenticated with profile:', response.data.profile.email);
+            console.log('[AuthContext] Profile ID from server:', response.data.profile.id);
             setState({
               user,
               profile: response.data.profile,

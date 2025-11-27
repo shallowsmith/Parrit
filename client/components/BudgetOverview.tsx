@@ -41,7 +41,16 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
   const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Record<string, boolean>>({});
-  const [filters, setFilters] = useState<{ startDate?: string; endDate?: string; categories?: string[] }>({});
+  // Default to current month's date range
+  const [filters, setFilters] = useState<{ startDate?: string; endDate?: string; categories?: string[] }>(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      startDate: startOfMonth.toISOString(),
+      endDate: endOfMonth.toISOString(),
+    };
+  });
 
   useEffect(() => {
     if (!profile?.id) return;

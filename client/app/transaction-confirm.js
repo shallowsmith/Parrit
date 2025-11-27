@@ -7,7 +7,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import categoryService, { categoryServiceWritable } from "@/services/category.service";
 import categoryPreferencesService from "@/services/categoryPreferences.service";
 import transactionService from "@/services/transaction.service";
-import { DEFAULT_NEW_CATEGORY_COLOR } from "@/constants/categoryColors";
+import { DEFAULT_NEW_CATEGORY_COLOR, getColorForNewCategory } from "@/constants/categoryColors";
 import { emit, on } from "@/utils/events";
 
 export default function TransactionConfirm() {
@@ -166,11 +166,13 @@ export default function TransactionConfirm() {
                     await categoryPreferencesService.enableCategory(profile.id, String(resolvedCategoryId));
                 } else {
                     // Create new category from AI suggestion
+                    const allCatsForColor = await categoryService.getCategories(profile.id);
+                    const newColor = getColorForNewCategory(Array.isArray(allCatsForColor.data) ? allCatsForColor.data : []);
                     const created = await categoryServiceWritable.createCategory(profile.id, {
                         name: cleanCategoryName,
                         type: "expense",
                         userId: profile.id,
-                        color: DEFAULT_NEW_CATEGORY_COLOR,
+                        color: newColor,
                     });
                     resolvedCategoryId = created.data.id || created.data._id;
                     // Auto-enable newly created category
@@ -194,11 +196,13 @@ export default function TransactionConfirm() {
                     await categoryPreferencesService.enableCategory(profile.id, String(resolvedCategoryId));
                 } else {
                     // Create new category
+                    const allCatsForColor = await categoryService.getCategories(profile.id);
+                    const newColor = getColorForNewCategory(Array.isArray(allCatsForColor.data) ? allCatsForColor.data : []);
                     const created = await categoryServiceWritable.createCategory(profile.id, {
                         name: cleanCategoryName,
                         type: "expense",
                         userId: profile.id,
-                        color: DEFAULT_NEW_CATEGORY_COLOR,
+                        color: newColor,
                     });
                     resolvedCategoryId = created.data.id || created.data._id;
                     // Auto-enable newly created category

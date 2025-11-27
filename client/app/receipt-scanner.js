@@ -108,19 +108,23 @@ import { useAuth } from "@/contexts/AuthContext";
                     )}
                 </View>
 
+                {!loading && (
                 <TouchableOpacity style={styles.actionButton} onPress={pickImage}>
                 <Text style={styles.actionText}>Pick Receipt Image</Text>
                 </TouchableOpacity>
+                )}
 
                 {imageUri && (
                 <>
                     <Image source={{ uri: imageUri }} style={styles.preview} />
+                    {!loading && (
                     <TouchableOpacity
                     style={styles.uploadButton}
                     onPress={uploadImage}
                     >
                     <Text style={styles.uploadText}>Upload and Extract Data</Text>
                     </TouchableOpacity>
+                    )}
                 </>
                 )}
 

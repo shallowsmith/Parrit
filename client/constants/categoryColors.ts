@@ -38,6 +38,125 @@ export const BASE_COLORS = [
   '#B45309', // brown orange - position 17
 ];
 
+// Custom category color palette - specifically chosen to NOT conflict with default categories
+// Includes pale, bright/neon, and dull variations for maximum variety
+export const CUSTOM_CATEGORY_COLORS = [
+  // Bright/Neon variations (eye-catching, saturated colors)
+  '#22D3EE', // bright cyan
+  '#A3E635', // lime neon
+  '#FACC15', // bright yellow
+  '#F59E0B', // bright amber
+  '#0EA5E9', // bright sky blue
+  '#10B981', // bright emerald (different from transportation)
+  '#F472B6', // hot pink
+  '#C084FC', // bright purple
+  '#FB7185', // coral
+  '#14F195', // neon green
+  '#06B6D4', // bright teal
+  '#FBBF24', // golden yellow
+  '#E879F9', // neon magenta
+  '#2DD4BF', // bright turquoise
+  '#84CC16', // chartreuse
+
+  // Pale/Pastel variations (soft, light colors)
+  '#BFDBFE', // pale blue
+  '#BBF7D0', // pale green
+  '#FED7AA', // pale peach
+  '#FBCFE8', // pale pink
+  '#DDD6FE', // pale lavender
+  '#BAE6FD', // pale sky
+  '#FEF3C7', // pale yellow
+  '#D9F99D', // pale lime
+  '#FED7D7', // pale rose
+  '#E0E7FF', // pale indigo
+  '#CCFBF1', // pale teal
+  '#FCE7F3', // pale magenta
+  '#DBEAFE', // pale blue
+  '#D1FAE5', // pale emerald
+  '#FEE2E2', // pale red
+
+  // Dull/Muted variations (subdued, desaturated colors)
+  '#9CA3AF', // slate gray
+  '#6B7280', // cool gray
+  '#78716C', // stone gray
+  '#737373', // neutral gray
+  '#64748B', // blue gray
+  '#71717A', // zinc gray
+  '#7C8B84', // sage gray
+  '#8B7D6B', // taupe
+  '#6D7F8B', // steel gray
+  '#7A8B8A', // dusty teal
+  '#8B7A7A', // dusty rose
+  '#7A7B8B', // dusty purple
+  '#8B8A7A', // olive gray
+  '#7A8B7F', // moss gray
+  '#8B7F7A', // mocha gray
+
+  // Medium saturation variations (balanced colors)
+  '#60A5FA', // medium blue
+  '#34D399', // medium mint
+  '#FB923C', // medium orange
+  '#F9A8D4', // medium pink
+  '#818CF8', // medium indigo
+  '#FCD34D', // medium yellow
+  '#A78BFA', // medium purple
+  '#6EE7B7', // medium seafoam
+  '#FCA5A5', // medium salmon
+  '#93C5FD', // medium powder blue
+  '#FDE047', // medium lemon
+  '#86EFAC', // medium green
+  '#FDA4AF', // medium rose
+  '#BAE6FF', // medium sky
+  '#FDBA74', // medium peach
+];
+
+/**
+ * Get all colors used by default/predefined categories
+ */
+export function getDefaultCategoryColors(): string[] {
+  return Object.values(CATEGORY_COLORS);
+}
+
+/**
+ * Get a color for a new custom category that doesn't conflict with default categories
+ * @param existingCategories - Array of existing categories to check for color conflicts
+ */
+export function getColorForNewCategory(existingCategories: any[] = []): string {
+  // Collect all colors already in use by custom categories (not default ones)
+  const usedCustomColors = new Set(
+    existingCategories
+      .map((c: any) => c.color)
+      .filter(Boolean)
+      .filter((color: string) => !Object.values(CATEGORY_COLORS).includes(color))
+  );
+
+  // Find first available color from CUSTOM_CATEGORY_COLORS
+  for (const color of CUSTOM_CATEGORY_COLORS) {
+    if (!usedCustomColors.has(color)) {
+      return color;
+    }
+  }
+
+  // If all custom colors are used, try pale variations
+  for (const baseColor of CUSTOM_CATEGORY_COLORS) {
+    const paleColor = generateColorVariation(baseColor, 'pale');
+    if (!usedCustomColors.has(paleColor)) {
+      return paleColor;
+    }
+  }
+
+  // If those are all used, try bright variations
+  for (const baseColor of CUSTOM_CATEGORY_COLORS) {
+    const brightColor = generateColorVariation(baseColor, 'bright');
+    if (!usedCustomColors.has(brightColor)) {
+      return brightColor;
+    }
+  }
+
+  // Fallback: cycle through custom colors
+  return CUSTOM_CATEGORY_COLORS[Math.floor(Math.random() * CUSTOM_CATEGORY_COLORS.length)];
+}
+
 /**
  * Convert hex color to HSL
  */

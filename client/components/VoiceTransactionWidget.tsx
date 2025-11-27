@@ -13,6 +13,7 @@ import categoryPreferencesService from '@/services/categoryPreferences.service';
 import { on , emit } from '@/utils/events';
 import { extractAmount } from '@/utils/amount';
 import { mapTextToBucketByKeywords } from '@/utils/category';
+import { getColorForNewCategory } from '@/constants/categoryColors';
 
 const ASSEMBLYAI_API_KEY: string | undefined = Constants.expoConfig?.extra?.ASSEMBLYAI_API_KEY;
 
@@ -464,7 +465,8 @@ export default function VoiceRecorder() {
           }
 
           // Category doesn't exist - create it
-          const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id });
+          const newColor = getColorForNewCategory(categoryBuckets);
+          const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: newColor });
           const created = createRes.data;
           const createdId = created.id || created._id;
           // Auto-enable newly created category

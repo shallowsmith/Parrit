@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import BudgetDonut from '@/components/BudgetDonut';
 import TransactionsList from '@/components/TransactionsList';
 import TransactionFilter from '@/components/TransactionFilter';
-import { normalizeCategoryKey, DEFAULT_NEW_CATEGORY_COLOR, getCategoryColor } from '@/constants/categoryColors';
+import { normalizeCategoryKey, DEFAULT_NEW_CATEGORY_COLOR, getCategoryColor, getColorForNewCategory } from '@/constants/categoryColors';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { useAuth } from '@/contexts/AuthContext';
@@ -179,7 +179,8 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
 
         // Category doesn't exist - create it
         const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
-        const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
+        const newColor = getColorForNewCategory(categories);
+        const createRes = await categoryServiceWritable.createCategory(profile.id, { name: capitalize(raw), type: 'expense', userId: profile.id, color: newColor });
         const created = createRes.data;
         const createdId = created.id || created._id;
         // Auto-enable newly created category
@@ -440,7 +441,8 @@ export default function BudgetOverview({ editTransactionParam }: { editTransacti
                     if (!raw) return;
                     if (!profile?.id) { Alert.alert('Not signed in'); return; }
                     try {
-                      const res = await categoryServiceWritable.createCategory(profile.id, { name: raw, type: 'expense', userId: profile.id, color: DEFAULT_NEW_CATEGORY_COLOR });
+                      const newColor = getColorForNewCategory(categories);
+                      const res = await categoryServiceWritable.createCategory(profile.id, { name: raw, type: 'expense', userId: profile.id, color: newColor });
                       try { emit('categories:changed'); } catch (e) { /* ignore */ }
                       setNewCategoryInput('');
                       // reload categories list

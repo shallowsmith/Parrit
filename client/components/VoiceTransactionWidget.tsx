@@ -32,9 +32,7 @@ export default function VoiceRecorder() {
   const [selectedPaymentType, setSelectedPaymentType] = useState('Credit');
   const [isProcessing, setIsProcessing] = useState(false);
   const paymentTypes = ['Credit', 'Debit', 'Cash'];
-  const [categoryBuckets, setCategoryBuckets] = useState<CategoryChip[]>(() => [
-    { id: 'misc', label: 'Misc' },
-  ]);
+  const [categoryBuckets, setCategoryBuckets] = useState<CategoryChip[]>([]);
 
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [activeCategory, setActiveCategory] = useState<CategoryChip | null>(null);
@@ -89,11 +87,28 @@ export default function VoiceRecorder() {
         const res = await categoryService.getCategories(profile.id);
         if (!mounted) return;
         const cats = Array.isArray(res.data) ? res.data : [];
-  const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
-  const mapped = cats.map((c: any) => ({ id: c.id || c._id, label: capitalize(c.name || ''), serverId: c.id || c._id }));
-        const withMisc = [{ id: 'misc', label: 'Misc', serverId: 'misc' }, ...mapped];
+
+        const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
+        const mapped = cats.map((c: any) => ({ id: c.id || c._id, label: capitalize(c.name || ''), serverId: c.id || c._id }));
+
+        // Get user's category preferences
+        const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
+
+        // Default categories that should always be available if enabled
+        const defaults = ['Food', 'Groceries', 'Rent', 'Utilities', 'Transportation', 'Entertainment', 'Travel', 'Gifts', 'Misc'];
+
+        // Add default categories that don't exist on server but are enabled in preferences
+        const serverCatNames = new Set(mapped.map(c => c.label.toLowerCase()));
+
+        const defaultsToAdd = defaults
+          .filter(dn => !serverCatNames.has(dn.toLowerCase()))
+          .filter(dn => prefs[dn] ?? true)
+          .map(dn => ({ id: dn.toLowerCase(), label: dn, serverId: dn.toLowerCase() }));
+
+        const allCategories = [...mapped, ...defaultsToAdd];
+
         const seen = new Map<string, any>();
-        const deduped = withMisc.filter(c => {
+        const deduped = allCategories.filter(c => {
           const key = String(c.label || '').toLowerCase();
           if (seen.has(key)) return false;
           seen.set(key, true);
@@ -101,10 +116,9 @@ export default function VoiceRecorder() {
         });
 
         // Filter by user's category preferences
-        const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
         const filtered = deduped.filter(c => {
           const id = c.serverId || c.id;
-          return prefs[String(id)] ?? true; // Default to enabled
+          return prefs[String(id)] ?? prefs[c.label] ?? true;
         });
 
         setCategoryBuckets(filtered);
@@ -125,9 +139,27 @@ export default function VoiceRecorder() {
         const cats = Array.isArray(res.data) ? res.data : [];
         const capitalize = (s: string) => String(s || '').replace(/\b\w/g, (m) => m.toUpperCase()).trim();
         const mapped = cats.map((c: any) => ({ id: c.id || c._id, label: capitalize(c.name || ''), serverId: c.id || c._id }));
-        const withMisc = [{ id: 'misc', label: 'Misc', serverId: 'misc' }, ...mapped];
+
+        // Get user's category preferences
+        const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
+
+        // Default categories that should always be available if enabled
+        const defaults = ['Food', 'Groceries', 'Rent', 'Utilities', 'Transportation', 'Entertainment', 'Travel', 'Gifts', 'Misc'];
+
+        // Add default categories that don't exist on server but are enabled in preferences
+        const serverCatNames = new Set(mapped.map(c => c.label.toLowerCase()));
+        const defaultsToAdd = defaults
+          .filter(dn => !serverCatNames.has(dn.toLowerCase()))
+          .filter(dn => {
+            // Check if enabled by name in preferences (for categories not on server)
+            return prefs[dn] ?? true; // Default to enabled
+          })
+          .map(dn => ({ id: dn.toLowerCase(), label: dn, serverId: dn.toLowerCase() }));
+
+        const allCategories = [...mapped, ...defaultsToAdd];
+
         const seen = new Map<string, any>();
-        const deduped = withMisc.filter(c => {
+        const deduped = allCategories.filter(c => {
           const key = String(c.label || '').toLowerCase();
           if (seen.has(key)) return false;
           seen.set(key, true);
@@ -135,10 +167,10 @@ export default function VoiceRecorder() {
         });
 
         // Filter by user's category preferences
-        const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
         const filtered = deduped.filter(c => {
           const id = c.serverId || c.id;
-          return prefs[String(id)] ?? true; // Default to enabled
+          // Check both by ID and by label (for default categories saved by name)
+          return prefs[String(id)] ?? prefs[c.label] ?? true; // Default to enabled
         });
 
         setCategoryBuckets(filtered);

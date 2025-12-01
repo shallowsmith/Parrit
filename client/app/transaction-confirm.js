@@ -49,16 +49,43 @@ export default function TransactionConfirm() {
             }, []);
 
             const mapped = uniqueCats.map((c) => ({
-            id: c.id || c._id,
-            label: c.name,
-            serverId: c.id || c._id,
+                id: c.id || c._id,
+                label: c.name,
+                serverId: c.id || c._id,
             }));
 
-            // Filter by user's category preferences
+            // Get user's category preferences
             const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
-            const filtered = mapped.filter(c => {
+
+            // Default categories that should always be available if enabled
+            const defaults = ['Food', 'Groceries', 'Rent', 'Utilities', 'Transportation', 'Entertainment', 'Travel', 'Gifts', 'Misc'];
+
+            // Add default categories that don't exist on server but are enabled in preferences
+            const serverCatNames = new Set(mapped.map(c => c.label.toLowerCase()));
+            const defaultsToAdd = defaults
+                .filter(dn => !serverCatNames.has(dn.toLowerCase()))
+                .filter(dn => {
+                    // Check if enabled by name in preferences (for categories not on server)
+                    return prefs[dn] ?? true; // Default to enabled
+                })
+                .map(dn => ({ id: dn.toLowerCase(), label: dn, serverId: dn.toLowerCase() }));
+
+            const allCategories = [...mapped, ...defaultsToAdd];
+
+            // Remove duplicates by label
+            const seen = new Set();
+            const deduped = allCategories.filter(c => {
+                const key = c.label.toLowerCase();
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+
+            // Filter by user's category preferences
+            const filtered = deduped.filter(c => {
                 const id = c.serverId || c.id;
-                return prefs[String(id)] ?? true; // Default to enabled
+                // Check both by ID and by label (for default categories saved by name)
+                return prefs[String(id)] ?? prefs[c.label] ?? true; // Default to enabled
             });
 
             // Check if AI-suggested category already exists in user's categories (case-insensitive)
@@ -107,11 +134,38 @@ export default function TransactionConfirm() {
                     serverId: c.id || c._id,
                 }));
 
-                // Filter by user's category preferences
+                // Get user's category preferences
                 const prefs = await categoryPreferencesService.getCategoryPreferences(profile.id);
-                const filtered = mapped.filter(c => {
+
+                // Default categories that should always be available if enabled
+                const defaults = ['Food', 'Groceries', 'Rent', 'Utilities', 'Transportation', 'Entertainment', 'Travel', 'Gifts', 'Misc'];
+
+                // Add default categories that don't exist on server but are enabled in preferences
+                const serverCatNames = new Set(mapped.map(c => c.label.toLowerCase()));
+                const defaultsToAdd = defaults
+                    .filter(dn => !serverCatNames.has(dn.toLowerCase()))
+                    .filter(dn => {
+                        // Check if enabled by name in preferences (for categories not on server)
+                        return prefs[dn] ?? true; // Default to enabled
+                    })
+                    .map(dn => ({ id: dn.toLowerCase(), label: dn, serverId: dn.toLowerCase() }));
+
+                const allCategories = [...mapped, ...defaultsToAdd];
+
+                // Remove duplicates by label
+                const seen = new Set();
+                const deduped = allCategories.filter(c => {
+                    const key = c.label.toLowerCase();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+
+                // Filter by user's category preferences
+                const filtered = deduped.filter(c => {
                     const id = c.serverId || c.id;
-                    return prefs[String(id)] ?? true; // Default to enabled
+                    // Check both by ID and by label (for default categories saved by name)
+                    return prefs[String(id)] ?? prefs[c.label] ?? true; // Default to enabled
                 });
 
                 // Preserve AI-suggested category if it exists
